@@ -1,0 +1,33 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+dist/
+build/
+
+# Node
+node_modules/
+
+# 环境与密钥
+.env
+config.toml
+*.local.toml
+
+# IDE
+.idea/
+.vscode/
+
+# 运行时数据
+workspace/
+*.db
+*.sqlite3
+*.sock
+
+# OS
+.DS_Store
+Thumbs.db
+
+# 工具链
+.claude/
+.codex
