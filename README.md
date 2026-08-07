@@ -2,24 +2,46 @@
 
 带记忆与自驱能力的主动式 AI Agent——不只在被问时回答，更能按需主动推送、空闲自主完成任务。
 
-## 项目愿景
+## 快速开始
 
-构建一个可记忆的主动型个人 AI Agent：自适应轮询外部信息源，判断推送时机，空闲时自主执行后台工作流。
+需要 Python 3.12+。
+
+```bash
+# 安装依赖
+pip install -r requirements.txt
+
+# 创建配置文件
+cp config.example.toml config.toml
+# 编辑 config.toml 填入你的 API Key
+
+# 启动对话
+python main.py
+```
 
 ## 核心特征
 
-- **持久记忆** —— 对话自动提取为结构化事实，跨会话保留
-- **主动推送** —— 按自适应电量模型轮询信息源，判断该不该发消息
-- **空闲自驱** —— 没东西可推时，自主执行后台任务
+- **ReAct 循环** —— 推理 + 行动交替执行，支持多轮工具调用
+- **持久记忆** —— 对话中保存的事实写入 `MEMORY.md`，跨会话保留
+- **工具调用** —— 内置 shell、记忆检索等工具，可扩展
+- **OpenAI 兼容** —— 支持任意 OpenAI Chat Completions 兼容端点
 
-## 状态
+## 项目结构
 
-项目初始化中。
-
-## 技术栈
-
-- Python 3.12+
-- 详细依赖将在后续提交中逐步添加
+```
+proactivemind/
+├── main.py              # 入口，CLI 对话 REPL
+├── config.example.toml  # 配置模板
+├── agent/
+│   ├── config.py        # 配置加载
+│   ├── provider.py      # LLM 调用（OpenAI 兼容）
+│   ├── session.py       # 会话消息历史
+│   ├── tools.py         # 工具注册 + 内置工具
+│   ├── memory.py        # Markdown 文件记忆
+│   └── loop.py          # Agent ReAct 循环
+└── ~/.proactivemind/
+    └── workspace/
+        └── MEMORY.md    # 持久记忆
+```
 
 ## License
 

@@ -1,0 +1,11 @@
+# ProactiveMind 配置文件
+# 复制为 config.toml 后填入你的 API 信息
+
+[llm]
+api_key = "${DEEPSEEK_API_KEY}"
+base_url = "https://api.deepseek.com/v1"
+model = "deepseek-chat"
+max_tokens = 4096
+
+[workspace]
+path = "~/.proactivemind/workspace"
