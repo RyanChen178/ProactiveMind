@@ -56,28 +56,30 @@ class AgentLoop:
                 return response.content
 
             # 有 tool_calls → 执行工具后继续循环
-            tool_call_dicts = []
-            for call in response.tool_calls:
-                result = await self._tools.execute(call)
-                tool_call_dicts.append(
-                    {
-                        "id": call.id,
-                        "type": "function",
-                        "function": {
-                            "name": call.name,
-                            "arguments": json.dumps(
-                                call.arguments, ensure_ascii=False
-                            ),
-                        },
-                    }
-                )
-                self._session.add_tool_result(call.id, result)
-
+            tool_call_dicts = [
+                {
+                    "id": call.id,
+                    "type": "function",
+                    "function": {
+                        "name": call.name,
+                        "arguments": json.dumps(
+                            call.arguments, ensure_ascii=False
+                        ),
+                    },
+                }
+                for call in response.tool_calls
+            ]
             self._session.add_assistant(
                 response.content, tool_calls=tool_call_dicts
             )
 
-        return "（达到最大工具调用次数，终止本轮）"
+            for call in response.tool_calls:
+                result = await self._tools.execute(call)
+                self._session.add_tool_result(call.id, result)
+
+        message = "（达到最大工具调用次数，终止本轮）"
+        self._session.add_assistant(message)
+        return message
 
     def _build_messages(self) -> list[dict]:
         messages = [{"role": "system", "content": self._system_prompt}]

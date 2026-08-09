@@ -18,6 +18,12 @@ cp config.example.toml config.toml
 python main.py
 ```
 
+## 运行测试
+
+```bash
+python -m unittest discover -s tests -v
+```
+
 ## 核心特征
 
 - **ReAct 循环** —— 推理 + 行动交替执行，支持多轮工具调用
@@ -38,6 +44,8 @@ proactivemind/
 │   ├── tools.py         # 工具注册 + 内置工具
 │   ├── memory.py        # Markdown 文件记忆
 │   └── loop.py          # Agent ReAct 循环
+├── tests/
+│   └── test_loop.py     # ReAct 循环测试
 └── ~/.proactivemind/
     └── workspace/
         └── MEMORY.md    # 持久记忆
