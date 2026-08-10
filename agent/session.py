@@ -3,6 +3,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from typing import Callable
+
+
+MessagePersister = Callable[[dict], None]
 
 
 @dataclass
@@ -14,9 +18,14 @@ class Session:
     """
 
     messages: list[dict] = field(default_factory=list)
+    persist_message: MessagePersister | None = field(
+        default=None,
+        repr=False,
+        compare=False,
+    )
 
     def add_user(self, content: str) -> None:
-        self.messages.append({"role": "user", "content": content})
+        self._append({"role": "user", "content": content})
 
     def add_assistant(
         self,
@@ -26,16 +35,23 @@ class Session:
         msg: dict = {"role": "assistant", "content": content}
         if tool_calls:
             msg["tool_calls"] = tool_calls
-        self.messages.append(msg)
+        self._append(msg)
 
     def add_tool_result(self, tool_call_id: str, content: str) -> None:
-        self.messages.append(
+        self._append(
             {
                 "role": "tool",
                 "tool_call_id": tool_call_id,
                 "content": content,
             }
         )
+
+    def _append(self, message: dict) -> None:
+        """先持久化消息，再更新当前内存视图。"""
+
+        if self.persist_message is not None:
+            self.persist_message(message)
+        self.messages.append(message)
 
     def get_history(self, max_messages: int = 50) -> list[dict]:
         """返回最近的消息历史，避免超出上下文窗口。"""

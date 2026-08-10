@@ -32,8 +32,8 @@ async def chat_repl() -> None:
             if not user_input:
                 continue
             if user_input in ("/clear", "/reset"):
-                agent._session.clear()
-                print("（已清空对话历史）\n")
+                agent.reset_session()
+                print("（已新建会话，旧历史仍保留）\n")
                 continue
 
             reply = await agent.run(user_input)

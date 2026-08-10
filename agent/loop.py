@@ -8,6 +8,7 @@ from agent.config import Config
 from agent.memory import MemoryStore
 from agent.provider import LLMProvider, LLMResponse
 from agent.session import Session
+from agent.session_store import SessionStore
 from agent.tools import ToolRegistry, build_default_tools
 
 SYSTEM_PROMPT = """\
@@ -28,8 +29,10 @@ class AgentLoop:
     def __init__(self, config: Config) -> None:
         self._config = config
         self._provider = LLMProvider(config.llm)
-        self._session = Session()
         self._memory = MemoryStore(config.workspace)
+        self._session_store = SessionStore(config.workspace / "sessions.db")
+        self._session_id = self._session_store.get_or_create_active_session()
+        self._session = self._load_session(self._session_id)
         self._tools = build_default_tools(self._memory)
 
         # 把已有记忆注入 system prompt
@@ -86,5 +89,25 @@ class AgentLoop:
         messages.extend(self._session.get_history())
         return messages
 
+    def _load_session(self, session_id: str) -> Session:
+        """从 SQLite 恢复指定会话的内存视图。"""
+
+        messages = self._session_store.load_messages(session_id)
+        return Session(
+            messages,
+            persist_message=lambda message: self._session_store.append_message(
+                session_id, message
+            ),
+        )
+
+    def reset_session(self) -> None:
+        """切换到新的活动会话，保留旧会话历史。"""
+
+        self._session_id = self._session_store.create_active_session()
+        self._session = self._load_session(self._session_id)
+
     async def aclose(self) -> None:
-        await self._provider.aclose()
+        try:
+            await self._provider.aclose()
+        finally:
+            self._session_store.close()
