@@ -9,3 +9,7 @@ max_tokens = 4096
 
 [workspace]
 path = "~/.proactivemind/workspace"
+
+[context]
+# 发送给模型的历史消息预算，按字符近似估算 token
+max_history_tokens = 6000

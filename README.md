@@ -28,6 +28,7 @@ python -m unittest discover -s tests -v
 
 - **ReAct 循环** —— 推理 + 行动交替执行，支持多轮工具调用
 - **会话持久化** —— 消息写入 SQLite，重启后自动恢复当前会话
+- **上下文管理** —— 按 token 预算裁切历史，工具调用与结果始终完整保留
 - **持久记忆** —— 对话中保存的事实写入 `MEMORY.md`，跨会话保留
 - **工具调用** —— 内置 shell、记忆检索等工具，可扩展
 - **OpenAI 兼容** —— 支持任意 OpenAI Chat Completions 兼容端点
@@ -43,6 +44,7 @@ proactivemind/
 │   ├── provider.py      # LLM 调用（OpenAI 兼容）
 │   ├── session.py       # 会话消息历史
 │   ├── session_store.py # SQLite 会话存储
+│   ├── context.py       # token 估算与历史视图
 │   ├── tools.py         # 工具注册 + 内置工具
 │   ├── memory.py        # Markdown 文件记忆
 │   └── loop.py          # Agent ReAct 循环

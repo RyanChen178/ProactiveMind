@@ -20,6 +20,7 @@ class LLMConfig:
 class Config:
     llm: LLMConfig
     workspace: Path
+    max_history_tokens: int = 6000
 
 
 def load_config(path: str = "config.toml") -> Config:
@@ -52,6 +53,7 @@ def load_config(path: str = "config.toml") -> Config:
         raise ValueError("[llm].api_key 不能为空")
 
     workspace_str = data.get("workspace", {}).get("path", "~/.proactivemind/workspace")
+    context_section = data.get("context", {})
 
     return Config(
         llm=LLMConfig(
@@ -61,4 +63,5 @@ def load_config(path: str = "config.toml") -> Config:
             max_tokens=llm_section.get("max_tokens", 4096),
         ),
         workspace=Path(workspace_str).expanduser().resolve(),
+        max_history_tokens=context_section.get("max_history_tokens", 6000),
     )

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import unittest
+from types import SimpleNamespace
 
 from agent.loop import AgentLoop
 from agent.provider import LLMResponse, ToolCall
@@ -51,6 +52,7 @@ def build_loop(
     tools = FakeTools(tool_results)
     loop._provider = provider
     loop._session = Session()
+    loop._config = SimpleNamespace(max_history_tokens=6000)
     loop._system_prompt = "system"
     loop._tools = tools
     return loop, provider, tools

@@ -86,7 +86,9 @@ class AgentLoop:
 
     def _build_messages(self) -> list[dict]:
         messages = [{"role": "system", "content": self._system_prompt}]
-        messages.extend(self._session.get_history())
+        messages.extend(
+            self._session.get_history(self._config.max_history_tokens)
+        )
         return messages
 
     def _load_session(self, session_id: str) -> Session:

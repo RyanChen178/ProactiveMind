@@ -5,6 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Callable
 
+from agent.context import build_history_view
+
 
 MessagePersister = Callable[[dict], None]
 
@@ -53,11 +55,10 @@ class Session:
             self.persist_message(message)
         self.messages.append(message)
 
-    def get_history(self, max_messages: int = 50) -> list[dict]:
-        """返回最近的消息历史，避免超出上下文窗口。"""
-        if len(self.messages) <= max_messages:
-            return list(self.messages)
-        return list(self.messages[-max_messages:])
+    def get_history(self, max_tokens: int = 6000) -> list[dict]:
+        """返回受预算约束的完整消息组视图。"""
+
+        return build_history_view(self.messages, max_tokens)
 
     def clear(self) -> None:
         self.messages.clear()
