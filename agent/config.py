@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import os
 import tomllib
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 
@@ -17,10 +17,23 @@ class LLMConfig:
 
 
 @dataclass
+class PromptConfig:
+    persona: str = "你是 ProactiveMind，一个有持久记忆的 AI 助手。"
+    rules: list[str] = field(
+        default_factory=lambda: [
+            "准确、诚实地回答；不确定时说明不确定性。",
+            "使用工具前先判断是否确有必要。",
+            "重要且长期有效的用户事实可使用 memorize 保存。",
+        ]
+    )
+
+
+@dataclass
 class Config:
     llm: LLMConfig
     workspace: Path
     max_history_tokens: int = 6000
+    prompt: PromptConfig = field(default_factory=PromptConfig)
 
 
 def load_config(path: str = "config.toml") -> Config:
@@ -54,6 +67,10 @@ def load_config(path: str = "config.toml") -> Config:
 
     workspace_str = data.get("workspace", {}).get("path", "~/.proactivemind/workspace")
     context_section = data.get("context", {})
+    prompt_section = data.get("prompt", {})
+    rules = prompt_section.get("rules", PromptConfig().rules)
+    if not isinstance(rules, list) or not all(isinstance(rule, str) for rule in rules):
+        raise ValueError("[prompt].rules 必须是字符串列表")
 
     return Config(
         llm=LLMConfig(
@@ -64,4 +81,8 @@ def load_config(path: str = "config.toml") -> Config:
         ),
         workspace=Path(workspace_str).expanduser().resolve(),
         max_history_tokens=context_section.get("max_history_tokens", 6000),
+        prompt=PromptConfig(
+            persona=prompt_section.get("persona", PromptConfig().persona),
+            rules=rules,
+        ),
     )

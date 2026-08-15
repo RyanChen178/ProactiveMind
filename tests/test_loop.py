@@ -6,7 +6,7 @@ import unittest
 from types import SimpleNamespace
 
 from agent.loop import AgentLoop
-from agent.provider import LLMResponse, ToolCall
+from agent.provider import LLMResponse, StreamEvent, ToolCall
 from agent.session import Session
 
 
@@ -41,6 +41,24 @@ class FakeTools:
         return self._results.get(call.name, "ok")
 
 
+class FakeStreamProvider:
+    """逐段返回预设文本的流式 Provider。"""
+
+    def __init__(self, chunks: list[str]) -> None:
+        self._chunks = chunks
+        self.calls: list[list[dict]] = []
+
+    async def chat_stream(
+        self,
+        messages: list[dict],
+        tools: list[dict] | None = None,
+    ):
+        self.calls.append(messages)
+        for chunk in self._chunks:
+            yield StreamEvent(content=chunk)
+        yield StreamEvent(response=LLMResponse(content="".join(self._chunks)))
+
+
 def build_loop(
     responses: list[LLMResponse],
     tool_results: dict[str, str] | None = None,
@@ -59,6 +77,20 @@ def build_loop(
 
 
 class AgentLoopTest(unittest.IsolatedAsyncioTestCase):
+    async def test_streams_reply_and_persists_final_message(self) -> None:
+        loop, _, _ = build_loop([])
+        loop._provider = FakeStreamProvider(["你", "好"])
+
+        chunks = [chunk async for chunk in loop.run_stream("在吗")]
+
+        self.assertEqual(chunks, ["你", "好"])
+        self.assertEqual(loop._provider.calls[0][-1]["content"], "在吗")
+        self.assertEqual(
+            [message["role"] for message in loop._session.messages],
+            ["user", "assistant"],
+        )
+        self.assertEqual(loop._session.messages[-1]["content"], "你好")
+
     async def test_returns_direct_reply(self) -> None:
         loop, provider, tools = build_loop([LLMResponse(content="你好")])
 

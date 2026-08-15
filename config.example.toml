@@ -13,3 +13,11 @@ path = "~/.proactivemind/workspace"
 [context]
 # 发送给模型的历史消息预算，按字符近似估算 token
 max_history_tokens = 6000
+
+[prompt]
+persona = "你是 ProactiveMind，一个有持久记忆的 AI 助手。"
+rules = [
+  "准确、诚实地回答；不确定时说明不确定性。",
+  "使用工具前先判断是否确有必要。",
+  "重要且长期有效的用户事实可使用 memorize 保存。",
+]

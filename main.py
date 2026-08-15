@@ -36,8 +36,10 @@ async def chat_repl() -> None:
                 print("（已新建会话，旧历史仍保留）\n")
                 continue
 
-            reply = await agent.run(user_input)
-            print(f"\nagent > {reply}\n")
+            print("\nagent > ", end="", flush=True)
+            async for chunk in agent.run_stream(user_input):
+                print(chunk, end="", flush=True)
+            print("\n")
     finally:
         await agent.aclose()
 
