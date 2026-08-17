@@ -45,6 +45,33 @@ class MemoryStore:
             for fact in facts:
                 f.write(f"- {fact}\n")
 
+    def read_pending(self) -> list[str]:
+        """读取待人工确认的候选事实。"""
+
+        return self._read_facts(self._pending_file)
+
+    def unpromoted_pending(self) -> list[str]:
+        """读取尚未收录到长期记忆的候选事实。"""
+
+        existing = {self._fact_key(fact) for fact in self._read_facts(self._file)}
+        pending: list[str] = []
+        for fact in self.read_pending():
+            key = self._fact_key(fact)
+            if key in existing:
+                continue
+            pending.append(fact)
+            existing.add(key)
+        return pending
+
+    def promote_pending(self) -> list[str]:
+        """将尚未收录的候选事实追加到长期记忆。"""
+
+        promoted: list[str] = []
+        for fact in self.unpromoted_pending():
+            self.append(fact)
+            promoted.append(fact)
+        return promoted
+
     def search(self, keyword: str) -> list[str]:
         """按关键词搜索记忆，返回匹配的行。"""
         if not keyword:
@@ -60,3 +87,19 @@ class MemoryStore:
     def read_all(self) -> str:
         """读取全部记忆内容。"""
         return self._file.read_text(encoding="utf-8")
+
+    @staticmethod
+    def _read_facts(path: Path) -> list[str]:
+        """从 Markdown 列表中提取事实。"""
+
+        return [
+            line[2:].strip()
+            for line in path.read_text(encoding="utf-8").splitlines()
+            if line.startswith("- ") and line[2:].strip()
+        ]
+
+    @staticmethod
+    def _fact_key(fact: str) -> str:
+        """生成用于去重的事实标识。"""
+
+        return " ".join(fact.split()).casefold()

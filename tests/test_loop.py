@@ -3,10 +3,14 @@
 from __future__ import annotations
 
 import asyncio
+import tempfile
 import unittest
+from pathlib import Path
 from types import SimpleNamespace
 
+from agent.config import PromptConfig
 from agent.loop import AgentLoop
+from agent.memory import MemoryStore
 from agent.provider import LLMResponse, StreamEvent, ToolCall
 from agent.session import Session
 
@@ -89,6 +93,18 @@ def build_loop(
 
 
 class AgentLoopTest(unittest.IsolatedAsyncioTestCase):
+    def test_promotes_memory_and_refreshes_system_prompt(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            loop = AgentLoop.__new__(AgentLoop)
+            loop._config = SimpleNamespace(prompt=PromptConfig())
+            loop._memory = MemoryStore(Path(temp_dir))
+            loop._memory.append_pending(["用户长期维护 ProactiveMind 项目"])
+
+            facts = loop.promote_pending_memories()
+
+            self.assertEqual(facts, ["用户长期维护 ProactiveMind 项目"])
+            self.assertIn("用户长期维护 ProactiveMind 项目", loop._system_prompt)
+
     async def test_streams_reply_and_persists_final_message(self) -> None:
         loop, _, _ = build_loop([])
         loop._provider = FakeStreamProvider(["你", "好"])

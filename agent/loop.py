@@ -27,9 +27,7 @@ class AgentLoop:
         self._tools = build_default_tools(self._memory)
         self._consolidator = MemoryConsolidator(self._provider, self._memory)
         self._consolidation_tasks: set[asyncio.Task[list[str]]] = set()
-
-        memory_text = self._memory.read_all().strip()
-        self._system_prompt = PromptBuilder(config.prompt).build(memory_text)
+        self._refresh_system_prompt()
 
     async def run(self, user_input: str, max_steps: int = 10) -> str:
         """执行一轮对话：用户输入 → 可能多轮工具调用 → 最终回复。"""
@@ -149,6 +147,25 @@ class AgentLoop:
 
         self._session_id = self._session_store.create_active_session()
         self._session = self._load_session(self._session_id)
+
+    def get_pending_memories(self) -> list[str]:
+        """返回尚未提升的候选长期记忆。"""
+
+        return self._memory.unpromoted_pending()
+
+    def promote_pending_memories(self) -> list[str]:
+        """将候选记忆提升到长期记忆。"""
+
+        facts = self._memory.promote_pending()
+        if facts:
+            self._refresh_system_prompt()
+        return facts
+
+    def _refresh_system_prompt(self) -> None:
+        """用最新长期记忆重建系统提示词。"""
+
+        memory_text = self._memory.read_all().strip()
+        self._system_prompt = PromptBuilder(self._config.prompt).build(memory_text)
 
     async def aclose(self) -> None:
         try:

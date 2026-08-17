@@ -21,7 +21,7 @@ async def chat_repl() -> None:
 
     agent = AgentLoop(config)
 
-    print("ProactiveMind — 输入消息开始对话，Ctrl+C 退出\n")
+    print("ProactiveMind — 输入消息开始对话，/pending 查看记忆，Ctrl+C 退出\n")
     try:
         while True:
             try:
@@ -34,6 +34,22 @@ async def chat_repl() -> None:
             if user_input in ("/clear", "/reset"):
                 agent.reset_session()
                 print("（已新建会话，旧历史仍保留）\n")
+                continue
+            if user_input == "/pending":
+                facts = agent.get_pending_memories()
+                if not facts:
+                    print("（没有待归档记忆）\n")
+                else:
+                    print("（待归档记忆）")
+                    print("\n".join(f"- {fact}" for fact in facts))
+                    print()
+                continue
+            if user_input == "/promote":
+                facts = agent.promote_pending_memories()
+                if not facts:
+                    print("（没有新的候选记忆可提升）\n")
+                else:
+                    print(f"（已提升 {len(facts)} 条候选记忆）\n")
                 continue
 
             print("\nagent > ", end="", flush=True)

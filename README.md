@@ -18,6 +18,8 @@ cp config.example.toml config.toml
 python main.py
 ```
 
+对话中可使用 `/reset` 新建会话、`/pending` 查看待归档记忆、`/promote` 将未收录的候选记忆追加到 `MEMORY.md`。
+
 ## 运行测试
 
 ```bash
@@ -33,6 +35,7 @@ python -m unittest discover -s tests -v
 - **分层提示词** —— 人格、行为规则、工具说明与长期记忆按区块组装
 - **持久记忆** —— 对话中保存的事实写入 `MEMORY.md`，跨会话保留
 - **自动记忆归档** —— 对话结束后后台提取候选事实，先写入 `PENDING.md`
+- **记忆人工提升** —— 使用 `/pending` 查看候选事实，`/promote` 显式追加到长期记忆
 - **工具调用** —— 内置 shell、记忆检索等工具，可扩展
 - **OpenAI 兼容** —— 支持任意 OpenAI Chat Completions 兼容端点
 
