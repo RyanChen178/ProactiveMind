@@ -32,6 +32,7 @@ python -m unittest discover -s tests -v
 - **流式输出** —— CLI 实时显示模型生成的回复
 - **分层提示词** —— 人格、行为规则、工具说明与长期记忆按区块组装
 - **持久记忆** —— 对话中保存的事实写入 `MEMORY.md`，跨会话保留
+- **自动记忆归档** —— 对话结束后后台提取候选事实，先写入 `PENDING.md`
 - **工具调用** —— 内置 shell、记忆检索等工具，可扩展
 - **OpenAI 兼容** —— 支持任意 OpenAI Chat Completions 兼容端点
 
@@ -50,6 +51,7 @@ proactivemind/
 │   ├── prompt.py        # 分层系统提示词
 │   ├── tools.py         # 工具注册 + 内置工具
 │   ├── memory.py        # Markdown 文件记忆
+│   ├── consolidation.py # 候选长期记忆提取
 │   └── loop.py          # Agent ReAct 循环
 ├── tests/
 │   ├── test_loop.py          # ReAct 循环测试
@@ -57,7 +59,8 @@ proactivemind/
 └── ~/.proactivemind/
     └── workspace/
         ├── sessions.db   # 会话历史
-        └── MEMORY.md    # 持久记忆
+        ├── MEMORY.md     # 已确认的持久记忆
+        └── PENDING.md    # 待归档的候选记忆
 ```
 
 ## License

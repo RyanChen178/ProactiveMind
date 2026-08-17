@@ -15,6 +15,7 @@ class MemoryStore:
     def __init__(self, workspace: Path) -> None:
         self._workspace = workspace
         self._file = workspace / "MEMORY.md"
+        self._pending_file = workspace / "PENDING.md"
         self._ensure_file()
 
     def _ensure_file(self) -> None:
@@ -24,11 +25,25 @@ class MemoryStore:
                 "# 长期记忆\n\n每行一条事实。\n\n",
                 encoding="utf-8",
             )
+        if not self._pending_file.exists():
+            self._pending_file.write_text(
+                "# 待归档记忆\n\n由对话 consolidation 自动提取，尚未合并到长期记忆。\n\n",
+                encoding="utf-8",
+            )
 
     def append(self, fact: str) -> None:
         """追加一条事实到记忆文件。"""
         with self._file.open("a", encoding="utf-8") as f:
             f.write(f"- {fact}\n")
+
+    def append_pending(self, facts: list[str]) -> None:
+        """将候选事实追加到待归档缓冲。"""
+
+        if not facts:
+            return
+        with self._pending_file.open("a", encoding="utf-8") as f:
+            for fact in facts:
+                f.write(f"- {fact}\n")
 
     def search(self, keyword: str) -> list[str]:
         """按关键词搜索记忆，返回匹配的行。"""

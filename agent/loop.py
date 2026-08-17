@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 
 from agent.config import Config
+from agent.consolidation import MemoryConsolidator
 from agent.memory import MemoryStore
 from agent.provider import LLMProvider, LLMResponse
 from agent.prompt import PromptBuilder
@@ -23,6 +25,8 @@ class AgentLoop:
         self._session_id = self._session_store.get_or_create_active_session()
         self._session = self._load_session(self._session_id)
         self._tools = build_default_tools(self._memory)
+        self._consolidator = MemoryConsolidator(self._provider, self._memory)
+        self._consolidation_tasks: set[asyncio.Task[list[str]]] = set()
 
         memory_text = self._memory.read_all().strip()
         self._system_prompt = PromptBuilder(config.prompt).build(memory_text)
@@ -41,6 +45,7 @@ class AgentLoop:
             # 没有 tool_calls → 最终回复
             if not response.tool_calls:
                 self._session.add_assistant(response.content)
+                self._schedule_consolidation(user_input, response.content)
                 return response.content
 
             # 有 tool_calls → 执行工具后继续循环
@@ -69,6 +74,7 @@ class AgentLoop:
                 raise RuntimeError("LLM 流式响应缺少最终结果")
             if not response.tool_calls:
                 self._session.add_assistant(response.content)
+                self._schedule_consolidation(user_input, response.content)
                 return
             await self._execute_tool_calls(response)
 
@@ -102,6 +108,31 @@ class AgentLoop:
         )
         return messages
 
+    def _schedule_consolidation(
+        self, user_input: str, assistant_reply: str
+    ) -> None:
+        """在回复已写入后后台提取候选长期记忆。"""
+
+        config = getattr(self._config, "consolidation", None)
+        if config is None or not config.enabled:
+            return
+        task = asyncio.create_task(
+            self._consolidator.consolidate(user_input, assistant_reply)
+        )
+        self._consolidation_tasks.add(task)
+        task.add_done_callback(self._observe_consolidation)
+
+    def _observe_consolidation(self, task: asyncio.Task[list[str]]) -> None:
+        """回收后台归档任务，并显式报告失败。"""
+
+        self._consolidation_tasks.discard(task)
+        try:
+            task.result()
+        except asyncio.CancelledError:
+            return
+        except Exception as exc:
+            print(f"\n（记忆归档失败：{exc}）")
+
     def _load_session(self, session_id: str) -> Session:
         """从 SQLite 恢复指定会话的内存视图。"""
 
@@ -121,6 +152,11 @@ class AgentLoop:
 
     async def aclose(self) -> None:
         try:
+            tasks = list(self._consolidation_tasks)
+            for task in tasks:
+                task.cancel()
+            if tasks:
+                await asyncio.gather(*tasks, return_exceptions=True)
             await self._provider.aclose()
         finally:
             self._session_store.close()

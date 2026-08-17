@@ -29,11 +29,19 @@ class PromptConfig:
 
 
 @dataclass
+class ConsolidationConfig:
+    enabled: bool = True
+
+
+@dataclass
 class Config:
     llm: LLMConfig
     workspace: Path
     max_history_tokens: int = 6000
     prompt: PromptConfig = field(default_factory=PromptConfig)
+    consolidation: ConsolidationConfig = field(
+        default_factory=ConsolidationConfig
+    )
 
 
 def load_config(path: str = "config.toml") -> Config:
@@ -68,9 +76,13 @@ def load_config(path: str = "config.toml") -> Config:
     workspace_str = data.get("workspace", {}).get("path", "~/.proactivemind/workspace")
     context_section = data.get("context", {})
     prompt_section = data.get("prompt", {})
+    consolidation_section = data.get("consolidation", {})
     rules = prompt_section.get("rules", PromptConfig().rules)
+    consolidation_enabled = consolidation_section.get("enabled", True)
     if not isinstance(rules, list) or not all(isinstance(rule, str) for rule in rules):
         raise ValueError("[prompt].rules 必须是字符串列表")
+    if not isinstance(consolidation_enabled, bool):
+        raise ValueError("[consolidation].enabled 必须是布尔值")
 
     return Config(
         llm=LLMConfig(
@@ -84,5 +96,8 @@ def load_config(path: str = "config.toml") -> Config:
         prompt=PromptConfig(
             persona=prompt_section.get("persona", PromptConfig().persona),
             rules=rules,
+        ),
+        consolidation=ConsolidationConfig(
+            enabled=consolidation_enabled
         ),
     )

@@ -14,6 +14,10 @@ path = "~/.proactivemind/workspace"
 # 发送给模型的历史消息预算，按字符近似估算 token
 max_history_tokens = 6000
 
+[consolidation]
+# 每轮回复完成后，后台提取候选长期事实并写入 PENDING.md
+enabled = true
+
 [prompt]
 persona = "你是 ProactiveMind，一个有持久记忆的 AI 助手。"
 rules = [

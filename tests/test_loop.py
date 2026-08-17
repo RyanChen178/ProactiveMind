@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import unittest
 from types import SimpleNamespace
 
@@ -59,6 +60,17 @@ class FakeStreamProvider:
         yield StreamEvent(response=LLMResponse(content="".join(self._chunks)))
 
 
+class FakeConsolidator:
+    """记录后台归档请求。"""
+
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, str]] = []
+
+    async def consolidate(self, user_input: str, assistant_reply: str) -> list[str]:
+        self.calls.append((user_input, assistant_reply))
+        return []
+
+
 def build_loop(
     responses: list[LLMResponse],
     tool_results: dict[str, str] | None = None,
@@ -106,6 +118,22 @@ class AgentLoopTest(unittest.IsolatedAsyncioTestCase):
             ["user", "assistant"],
         )
         self.assertEqual(tools.calls, [])
+
+    async def test_schedules_consolidation_after_final_reply(self) -> None:
+        loop, _, _ = build_loop([LLMResponse(content="你好")])
+        consolidator = FakeConsolidator()
+        loop._config = SimpleNamespace(
+            max_history_tokens=6000,
+            consolidation=SimpleNamespace(enabled=True),
+        )
+        loop._consolidator = consolidator
+        loop._consolidation_tasks = set()
+
+        reply = await loop.run("在吗？")
+        await asyncio.sleep(0)
+
+        self.assertEqual(reply, "你好")
+        self.assertEqual(consolidator.calls, [("在吗？", "你好")])
 
     async def test_places_assistant_tool_call_before_tool_result(self) -> None:
         responses = [

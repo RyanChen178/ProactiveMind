@@ -53,13 +53,14 @@ class LLMProvider:
         self,
         messages: list[dict[str, Any]],
         tools: list[dict[str, Any]] | None = None,
+        max_tokens: int | None = None,
     ) -> LLMResponse:
         """调用 chat completions 接口。"""
 
         payload: dict[str, Any] = {
             "model": self._config.model,
             "messages": messages,
-            "max_tokens": self._config.max_tokens,
+            "max_tokens": max_tokens or self._config.max_tokens,
         }
         if tools:
             payload["tools"] = tools
