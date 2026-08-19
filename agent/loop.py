@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 
 from agent.config import Config
 from agent.consolidation import MemoryConsolidator
@@ -13,11 +14,15 @@ from agent.prompt import PromptBuilder
 from agent.session import Session
 from agent.session_store import SessionStore
 from agent.tools import ToolRegistry, build_default_tools
+from bus import EventBus, TurnCommitted
+
+log = logging.getLogger(__name__)
+
 
 class AgentLoop:
     """ReAct 循环：接收用户输入 → 调用 LLM → 执行工具 → 返回回复。"""
 
-    def __init__(self, config: Config) -> None:
+    def __init__(self, config: Config, bus: EventBus | None = None) -> None:
         self._config = config
         self._provider = LLMProvider(config.llm)
         self._memory = MemoryStore(config.workspace)
@@ -26,7 +31,8 @@ class AgentLoop:
         self._session = self._load_session(self._session_id)
         self._tools = build_default_tools(self._memory)
         self._consolidator = MemoryConsolidator(self._provider, self._memory)
-        self._consolidation_tasks: set[asyncio.Task[list[str]]] = set()
+        self._bus = bus or EventBus()
+        self._register_bus_handlers()
         self._refresh_system_prompt()
 
     async def run(self, user_input: str, max_steps: int = 10) -> str:
@@ -43,7 +49,7 @@ class AgentLoop:
             # 没有 tool_calls → 最终回复
             if not response.tool_calls:
                 self._session.add_assistant(response.content)
-                self._schedule_consolidation(user_input, response.content)
+                await self._emit_turn_committed(user_input, response.content)
                 return response.content
 
             # 有 tool_calls → 执行工具后继续循环
@@ -72,7 +78,7 @@ class AgentLoop:
                 raise RuntimeError("LLM 流式响应缺少最终结果")
             if not response.tool_calls:
                 self._session.add_assistant(response.content)
-                self._schedule_consolidation(user_input, response.content)
+                await self._emit_turn_committed(user_input, response.content)
                 return
             await self._execute_tool_calls(response)
 
@@ -106,30 +112,33 @@ class AgentLoop:
         )
         return messages
 
-    def _schedule_consolidation(
+    def _register_bus_handlers(self) -> None:
+        """注册事件总线 handler。"""
+
+        async def on_turn_committed(event: TurnCommitted) -> None:
+            cfg = getattr(self._config, "consolidation", None)
+            if cfg is not None and cfg.enabled:
+                try:
+                    await self._consolidator.consolidate(
+                        event.user_input, event.assistant_reply
+                    )
+                except Exception as exc:
+                    log.warning("记忆归档失败: %s", exc)
+
+        self._bus.on("turn_committed", on_turn_committed)
+
+    async def _emit_turn_committed(
         self, user_input: str, assistant_reply: str
     ) -> None:
-        """在回复已写入后后台提取候选长期记忆。"""
+        """发布 TurnCommitted 事件，触发后台记忆归档等副作用。"""
 
-        config = getattr(self._config, "consolidation", None)
-        if config is None or not config.enabled:
-            return
-        task = asyncio.create_task(
-            self._consolidator.consolidate(user_input, assistant_reply)
+        await self._bus.enqueue(
+            TurnCommitted(
+                session_id=self._session_id,
+                user_input=user_input,
+                assistant_reply=assistant_reply,
+            )
         )
-        self._consolidation_tasks.add(task)
-        task.add_done_callback(self._observe_consolidation)
-
-    def _observe_consolidation(self, task: asyncio.Task[list[str]]) -> None:
-        """回收后台归档任务，并显式报告失败。"""
-
-        self._consolidation_tasks.discard(task)
-        try:
-            task.result()
-        except asyncio.CancelledError:
-            return
-        except Exception as exc:
-            print(f"\n（记忆归档失败：{exc}）")
 
     def _load_session(self, session_id: str) -> Session:
         """从 SQLite 恢复指定会话的内存视图。"""
@@ -169,11 +178,7 @@ class AgentLoop:
 
     async def aclose(self) -> None:
         try:
-            tasks = list(self._consolidation_tasks)
-            for task in tasks:
-                task.cancel()
-            if tasks:
-                await asyncio.gather(*tasks, return_exceptions=True)
+            await self._bus.drain()
             await self._provider.aclose()
         finally:
             self._session_store.close()

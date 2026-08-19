@@ -13,6 +13,7 @@ from agent.loop import AgentLoop
 from agent.memory import MemoryStore
 from agent.provider import LLMResponse, StreamEvent, ToolCall
 from agent.session import Session
+from bus import EventBus
 
 
 class FakeProvider:
@@ -86,9 +87,13 @@ def build_loop(
     tools = FakeTools(tool_results)
     loop._provider = provider
     loop._session = Session()
+    loop._session_id = "test-session"
     loop._config = SimpleNamespace(max_history_tokens=6000)
     loop._system_prompt = "system"
     loop._tools = tools
+    loop._bus = EventBus()
+    loop._bus.start()
+    loop._register_bus_handlers()
     return loop, provider, tools
 
 
@@ -143,10 +148,9 @@ class AgentLoopTest(unittest.IsolatedAsyncioTestCase):
             consolidation=SimpleNamespace(enabled=True),
         )
         loop._consolidator = consolidator
-        loop._consolidation_tasks = set()
 
         reply = await loop.run("在吗？")
-        await asyncio.sleep(0)
+        await loop._bus.drain()
 
         self.assertEqual(reply, "你好")
         self.assertEqual(consolidator.calls, [("在吗？", "你好")])

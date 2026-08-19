@@ -36,6 +36,7 @@ python -m unittest discover -s tests -v
 - **持久记忆** —— 对话中保存的事实写入 `MEMORY.md`，跨会话保留
 - **自动记忆归档** —— 对话结束后后台提取候选事实，先写入 `PENDING.md`
 - **记忆人工提升** —— 使用 `/pending` 查看候选事实，`/promote` 显式追加到长期记忆
+- **事件总线** —— emit/fanout/enqueue 三种语义，对话完成事件驱动后台归档
 - **工具调用** —— 内置 shell、记忆检索等工具，可扩展
 - **OpenAI 兼容** —— 支持任意 OpenAI Chat Completions 兼容端点
 
@@ -56,9 +57,12 @@ proactivemind/
 │   ├── memory.py        # Markdown 文件记忆
 │   ├── consolidation.py # 候选长期记忆提取
 │   └── loop.py          # Agent ReAct 循环
+├── bus/
+│   └── __init__.py      # 事件总线（emit/fanout/enqueue）
 ├── tests/
-│   ├── test_loop.py          # ReAct 循环测试
-│   └── test_session_store.py # SQLite 会话存储测试
+│   ├── test_bus.py            # 事件总线测试
+│   ├── test_loop.py           # ReAct 循环测试
+│   └── test_session_store.py  # SQLite 会话存储测试
 └── ~/.proactivemind/
     └── workspace/
         ├── sessions.db   # 会话历史

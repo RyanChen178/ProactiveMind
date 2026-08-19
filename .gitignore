@@ -31,3 +31,4 @@ Thumbs.db
 # 工具链
 .claude/
 .codex
+.handoff-prompt.md

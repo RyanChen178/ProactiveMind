@@ -10,6 +10,7 @@ import asyncio
 
 from agent.config import load_config
 from agent.loop import AgentLoop
+from bus import EventBus
 
 
 async def chat_repl() -> None:
@@ -19,7 +20,9 @@ async def chat_repl() -> None:
         print(f"配置错误: {exc}")
         return
 
-    agent = AgentLoop(config)
+    bus = EventBus()
+    bus.start()
+    agent = AgentLoop(config, bus=bus)
 
     print("ProactiveMind — 输入消息开始对话，/pending 查看记忆，Ctrl+C 退出\n")
     try:
@@ -58,6 +61,7 @@ async def chat_repl() -> None:
             print("\n")
     finally:
         await agent.aclose()
+        await bus.aclose()
 
 
 if __name__ == "__main__":
