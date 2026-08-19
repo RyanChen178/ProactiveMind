@@ -37,6 +37,7 @@ python -m unittest discover -s tests -v
 - **自动记忆归档** —— 对话结束后后台提取候选事实，先写入 `PENDING.md`
 - **记忆人工提升** —— 使用 `/pending` 查看候选事实，`/promote` 显式追加到长期记忆
 - **事件总线** —— emit/fanout/enqueue 三种语义，对话完成事件驱动后台归档
+- **主动推送** —— 电量模型自适应轮询，用户空闲越久轮询越频繁
 - **工具调用** —— 内置 shell、记忆检索等工具，可扩展
 - **OpenAI 兼容** —— 支持任意 OpenAI Chat Completions 兼容端点
 
@@ -59,15 +60,22 @@ proactivemind/
 │   └── loop.py          # Agent ReAct 循环
 ├── bus/
 │   └── __init__.py      # 事件总线（emit/fanout/enqueue）
+├── proactive/
+│   ├── energy.py        # 电量模型（三段衰减 + 自适应间隔）
+│   ├── presence.py      # 用户活跃心跳追踪
+│   └── loop.py          # 主动推送定时循环
 ├── tests/
 │   ├── test_bus.py            # 事件总线测试
+│   ├── test_energy.py         # 电量模型测试
+│   ├── test_proactive.py     # 主动推送循环测试
 │   ├── test_loop.py           # ReAct 循环测试
 │   └── test_session_store.py  # SQLite 会话存储测试
 └── ~/.proactivemind/
     └── workspace/
-        ├── sessions.db   # 会话历史
-        ├── MEMORY.md     # 已确认的持久记忆
-        └── PENDING.md    # 待归档的候选记忆
+        ├── sessions.db    # 会话历史
+        ├── presence.db    # 用户活跃心跳
+        ├── MEMORY.md      # 已确认的持久记忆
+        └── PENDING.md     # 待归档的候选记忆
 ```
 
 ## License

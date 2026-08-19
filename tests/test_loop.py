@@ -93,6 +93,7 @@ def build_loop(
     loop._tools = tools
     loop._bus = EventBus()
     loop._bus.start()
+    loop._presence = None
     loop._register_bus_handlers()
     return loop, provider, tools
 

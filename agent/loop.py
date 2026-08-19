@@ -15,6 +15,7 @@ from agent.session import Session
 from agent.session_store import SessionStore
 from agent.tools import ToolRegistry, build_default_tools
 from bus import EventBus, TurnCommitted
+from proactive.presence import PresenceStore
 
 log = logging.getLogger(__name__)
 
@@ -22,7 +23,12 @@ log = logging.getLogger(__name__)
 class AgentLoop:
     """ReAct 循环：接收用户输入 → 调用 LLM → 执行工具 → 返回回复。"""
 
-    def __init__(self, config: Config, bus: EventBus | None = None) -> None:
+    def __init__(
+        self,
+        config: Config,
+        bus: EventBus | None = None,
+        presence: PresenceStore | None = None,
+    ) -> None:
         self._config = config
         self._provider = LLMProvider(config.llm)
         self._memory = MemoryStore(config.workspace)
@@ -32,6 +38,7 @@ class AgentLoop:
         self._tools = build_default_tools(self._memory)
         self._consolidator = MemoryConsolidator(self._provider, self._memory)
         self._bus = bus or EventBus()
+        self._presence = presence
         self._register_bus_handlers()
         self._refresh_system_prompt()
 
@@ -39,6 +46,8 @@ class AgentLoop:
         """执行一轮对话：用户输入 → 可能多轮工具调用 → 最终回复。"""
 
         self._session.add_user(user_input)
+        if self._presence is not None:
+            self._presence.record_user_message()
 
         for _step in range(max_steps):
             messages = self._build_messages()
@@ -65,6 +74,8 @@ class AgentLoop:
         """执行一轮对话，并逐段产出最终回复文本。"""
 
         self._session.add_user(user_input)
+        if self._presence is not None:
+            self._presence.record_user_message()
         for _step in range(max_steps):
             response: LLMResponse | None = None
             async for event in self._provider.chat_stream(

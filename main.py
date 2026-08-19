@@ -7,10 +7,13 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 
 from agent.config import load_config
 from agent.loop import AgentLoop
 from bus import EventBus
+from proactive.loop import ProactiveLoop
+from proactive.presence import PresenceStore
 
 
 async def chat_repl() -> None:
@@ -22,7 +25,14 @@ async def chat_repl() -> None:
 
     bus = EventBus()
     bus.start()
-    agent = AgentLoop(config, bus=bus)
+    presence = PresenceStore(config.workspace / "presence.db")
+    agent = AgentLoop(config, bus=bus, presence=presence)
+
+    proactive_loop = ProactiveLoop(
+        presence,
+        is_passive_busy=lambda: False,
+    )
+    proactive_task = asyncio.create_task(proactive_loop.run())
 
     print("ProactiveMind — 输入消息开始对话，/pending 查看记忆，Ctrl+C 退出\n")
     try:
@@ -60,8 +70,15 @@ async def chat_repl() -> None:
                 print(chunk, end="", flush=True)
             print("\n")
     finally:
+        proactive_loop.stop()
+        proactive_task.cancel()
+        try:
+            await proactive_task
+        except asyncio.CancelledError:
+            pass
         await agent.aclose()
         await bus.aclose()
+        presence.close()
 
 
 if __name__ == "__main__":
