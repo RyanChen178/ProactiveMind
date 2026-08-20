@@ -16,6 +16,11 @@ cp config.example.toml config.toml
 
 # 启动对话
 python main.py
+
+# 启动 Web Chat
+pip install -e ".[web]"
+python main.py web
+# 浏览器访问 http://127.0.0.1:6322
 ```
 
 对话中可使用 `/reset` 新建会话、`/pending` 查看待归档记忆、`/promote` 将未收录的候选记忆追加到 `MEMORY.md`。
@@ -39,6 +44,7 @@ python -m unittest discover -s tests -v
 - **事件总线** —— emit/fanout/enqueue 三种语义，对话完成事件驱动后台归档
 - **主动推送** —— 电量模型自适应轮询，用户空闲越久轮询越频繁
 - **Drift 空闲任务** —— 无内容可推时自主执行后台 skill
+- **Web Chat** —— FastAPI + WebSocket 浏览器对话界面
 - **工具调用** —— 内置 shell、记忆检索等工具，可扩展
 - **OpenAI 兼容** —— 支持任意 OpenAI Chat Completions 兼容端点
 
@@ -46,7 +52,7 @@ python -m unittest discover -s tests -v
 
 ```
 proactivemind/
-├── main.py              # 入口，CLI 对话 REPL
+├── main.py              # 入口（CLI / Web 模式）
 ├── config.example.toml  # 配置模板
 ├── agent/
 │   ├── config.py        # 配置加载
@@ -61,6 +67,8 @@ proactivemind/
 │   └── loop.py          # Agent ReAct 循环
 ├── bus/
 │   └── __init__.py      # 事件总线（emit/fanout/enqueue）
+├── channels/
+│   └── web_chat.py      # FastAPI + WebSocket Web Chat
 ├── proactive/
 │   ├── energy.py        # 电量模型（三段衰减 + 自适应间隔）
 │   ├── presence.py      # 用户活跃心跳追踪
@@ -74,6 +82,7 @@ proactivemind/
 │   ├── test_energy.py         # 电量模型测试
 │   ├── test_proactive.py     # 主动推送循环测试
 │   ├── test_drift.py         # Drift 空闲任务测试
+│   ├── test_web_chat.py      # Web Chat 渠道测试
 │   ├── test_loop.py           # ReAct 循环测试
 │   └── test_session_store.py  # SQLite 会话存储测试
 └── ~/.proactivemind/

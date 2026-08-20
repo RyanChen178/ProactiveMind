@@ -1,13 +1,15 @@
 """ProactiveMind 入口。
 
-启动一个 CLI 对话 REPL：
-  python main.py
+启动模式：
+  python main.py          —— CLI 对话 REPL
+  python main.py web      —— Web Chat（http://127.0.0.1:6322）
 """
 
 from __future__ import annotations
 
 import asyncio
 import logging
+import sys
 
 from agent.config import load_config
 from agent.loop import AgentLoop
@@ -16,12 +18,13 @@ from proactive.loop import ProactiveLoop
 from proactive.presence import PresenceStore
 
 
-async def chat_repl() -> None:
+def _build_agent():
+    """加载配置，构建 Agent + ProactiveLoop + EventBus。"""
     try:
         config = load_config("config.toml")
     except FileNotFoundError as exc:
         print(f"配置错误: {exc}")
-        return
+        raise
 
     bus = EventBus()
     bus.start()
@@ -32,6 +35,11 @@ async def chat_repl() -> None:
         presence,
         is_passive_busy=lambda: False,
     )
+    return agent, bus, presence, proactive_loop
+
+
+async def chat_repl() -> None:
+    agent, bus, presence, proactive_loop = _build_agent()
     proactive_task = asyncio.create_task(proactive_loop.run())
 
     print("ProactiveMind — 输入消息开始对话，/pending 查看记忆，Ctrl+C 退出\n")
@@ -81,5 +89,37 @@ async def chat_repl() -> None:
         presence.close()
 
 
+async def web_server() -> None:
+    """启动 Web Chat 服务。"""
+    import uvicorn
+
+    from channels.web_chat import create_app
+
+    agent, bus, presence, proactive_loop = _build_agent()
+    proactive_task = asyncio.create_task(proactive_loop.run())
+    app = create_app(agent)
+
+    config = uvicorn.Config(app, host="127.0.0.1", port=6322, log_level="info")
+    server = uvicorn.Server(config)
+
+    print("ProactiveMind Web Chat — http://127.0.0.1:6322")
+    try:
+        await server.serve()
+    finally:
+        proactive_loop.stop()
+        proactive_task.cancel()
+        try:
+            await proactive_task
+        except asyncio.CancelledError:
+            pass
+        await agent.aclose()
+        await bus.aclose()
+        presence.close()
+
+
 if __name__ == "__main__":
-    asyncio.run(chat_repl())
+    mode = sys.argv[1] if len(sys.argv) > 1 else "cli"
+    if mode == "web":
+        asyncio.run(web_server())
+    else:
+        asyncio.run(chat_repl())

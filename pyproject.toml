@@ -4,6 +4,10 @@ version = "0.0.1"
 description = "带记忆与自驱能力的主动式 AI Agent"
 requires-python = ">=3.12"
 
+[project.optional-dependencies]
+web = ["fastapi>=0.115", "uvicorn>=0.34"]
+dev = ["pytest", "httpx"]
+
 [build-system]
 requires = ["setuptools>=68"]
 build-backend = "setuptools.backends._legacy:_Backend"
