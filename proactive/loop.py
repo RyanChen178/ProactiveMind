@@ -13,6 +13,7 @@ import logging
 from dataclasses import dataclass
 from datetime import datetime, UTC
 
+from proactive.drift import DriftLoop
 from proactive.energy import compute_urgency, next_interval
 from proactive.presence import PresenceStore
 
@@ -24,7 +25,7 @@ class TickResult:
     """一轮主动推送的结果。"""
 
     tick_id: str
-    action: str  # "skipped" | "executed" | "no_content"
+    action: str  # "skipped" | "executed" | "no_content" | "drift"
     urgency: float
     interval_s: float
     reason: str = ""
@@ -38,10 +39,12 @@ class ProactiveLoop:
         presence: PresenceStore,
         *,
         is_passive_busy=None,
+        drift_loop: DriftLoop | None = None,
         max_ticks: int | None = None,
     ) -> None:
         self._presence = presence
         self._is_passive_busy = is_passive_busy or (lambda: False)
+        self._drift_loop = drift_loop
         self._max_ticks = max_ticks
         self._running = False
         self._tick_count = 0
@@ -104,6 +107,23 @@ class ProactiveLoop:
                 return result
 
         # Decide: MVP 阶段没有数据源，总是 no_content
+        # 如果有 Drift 且无内容可推，进入 Drift 空闲任务
+        if self._drift_loop is not None:
+            drift_result = await self._drift_loop.run()
+            action = (
+                "drift" if drift_result.action == "executed"
+                else "no_content"
+            )
+            log.info(
+                "%s Drift: %s skill=%s",
+                tick_id, drift_result.action, drift_result.skill_name or "—",
+            )
+            return TickResult(
+                tick_id=tick_id, action=action,
+                urgency=urgency, interval_s=interval,
+                reason=drift_result.action,
+            )
+
         log.info(
             "%s 完成: urgency=%.2f 间隔=%.0fs 下次约 %.0fs 后",
             tick_id, urgency, interval, interval,

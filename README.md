@@ -38,6 +38,7 @@ python -m unittest discover -s tests -v
 - **记忆人工提升** —— 使用 `/pending` 查看候选事实，`/promote` 显式追加到长期记忆
 - **事件总线** —— emit/fanout/enqueue 三种语义，对话完成事件驱动后台归档
 - **主动推送** —— 电量模型自适应轮询，用户空闲越久轮询越频繁
+- **Drift 空闲任务** —— 无内容可推时自主执行后台 skill
 - **工具调用** —— 内置 shell、记忆检索等工具，可扩展
 - **OpenAI 兼容** —— 支持任意 OpenAI Chat Completions 兼容端点
 
@@ -63,11 +64,16 @@ proactivemind/
 ├── proactive/
 │   ├── energy.py        # 电量模型（三段衰减 + 自适应间隔）
 │   ├── presence.py      # 用户活跃心跳追踪
+│   ├── drift.py         # Drift 空闲任务（扫描执行 SKILL.md）
 │   └── loop.py          # 主动推送定时循环
+├── skills/
+│   └── audit-memory/
+│       └── SKILL.md     # 后台任务指南示例
 ├── tests/
 │   ├── test_bus.py            # 事件总线测试
 │   ├── test_energy.py         # 电量模型测试
 │   ├── test_proactive.py     # 主动推送循环测试
+│   ├── test_drift.py         # Drift 空闲任务测试
 │   ├── test_loop.py           # ReAct 循环测试
 │   └── test_session_store.py  # SQLite 会话存储测试
 └── ~/.proactivemind/
