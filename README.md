@@ -42,7 +42,7 @@ python -m unittest discover -s tests -v
 - **自动记忆归档** —— 对话结束后后台提取候选事实，先写入 `PENDING.md`
 - **记忆人工提升** —— 使用 `/pending` 查看候选事实，`/promote` 显式追加到长期记忆
 - **事件总线** —— emit/fanout/enqueue 三种语义，对话完成事件驱动后台归档
-- **主动推送** —— 电量模型自适应轮询，用户空闲越久轮询越频繁
+- **主动推送** —— 电量模型自适应轮询，用户空闲越久轮询越频繁；Drift 结果可推送到 Web Chat 客户端
 - **Drift 空闲任务** —— 无内容可推时自主执行后台 skill
 - **Web Chat** —— FastAPI + WebSocket 浏览器对话界面
 - **插件系统** —— 声明式工具注册，plugins/ 目录自动发现，AgentLoop 启动时自动加载

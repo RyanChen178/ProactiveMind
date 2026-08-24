@@ -93,11 +93,15 @@ async def web_server() -> None:
     """启动 Web Chat 服务。"""
     import uvicorn
 
-    from channels.web_chat import create_app
+    from channels.web_chat import ConnectionManager, create_app
 
     agent, bus, presence, proactive_loop = _build_agent()
+
+    cm = ConnectionManager()
+    proactive_loop._push_callback = cm.broadcast
+
     proactive_task = asyncio.create_task(proactive_loop.run())
-    app = create_app(agent)
+    app = create_app(agent, cm)
 
     config = uvicorn.Config(app, host="127.0.0.1", port=6322, log_level="info")
     server = uvicorn.Server(config)

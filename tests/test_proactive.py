@@ -7,7 +7,9 @@ import tempfile
 import unittest
 from datetime import datetime, timedelta, UTC
 from pathlib import Path
+from unittest.mock import AsyncMock, MagicMock
 
+from proactive.drift import DriftResult
 from proactive.loop import ProactiveLoop
 from proactive.presence import PresenceStore
 
@@ -58,6 +60,53 @@ class ProactiveLoopTest(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(result.action, "no_content")
             self.assertGreater(result.urgency, 0.0)
             self.assertGreater(result.interval_s, 60.0)
+
+    async def test_pushes_drift_result_via_callback(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            loop, presence = self._make_loop(temp_dir)
+            pushed: list[str] = []
+
+            async def fake_drift_run():
+                return DriftResult(
+                    action="executed",
+                    skill_name="audit-memory",
+                    summary="发现 2 条过时记忆",
+                )
+
+            async def push_callback(content: str) -> None:
+                pushed.append(content)
+
+            loop._drift_loop = MagicMock()
+            loop._drift_loop.run = fake_drift_run
+            loop._push_callback = push_callback
+
+            result = await loop._tick()
+            presence.close()
+
+            self.assertEqual(result.action, "pushed")
+            self.assertIn("audit-memory", result.pushed_content)
+            self.assertIn("发现 2 条过时记忆", result.pushed_content)
+            self.assertEqual(len(pushed), 1)
+
+    async def test_falls_back_to_drift_when_no_callback(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            loop, presence = self._make_loop(temp_dir)
+
+            async def fake_drift_run():
+                return DriftResult(
+                    action="executed",
+                    skill_name="audit-memory",
+                    summary="审计完成",
+                )
+
+            loop._drift_loop = MagicMock()
+            loop._drift_loop.run = fake_drift_run
+
+            result = await loop._tick()
+            presence.close()
+
+            self.assertEqual(result.action, "drift")
+            self.assertEqual(result.pushed_content, "")
 
     async def test_loop_stops_after_max_ticks(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

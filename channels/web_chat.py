@@ -17,6 +17,37 @@ from agent.loop import AgentLoop
 
 log = logging.getLogger(__name__)
 
+
+class ConnectionManager:
+    """管理 WebSocket 连接，支持向所有客户端广播。"""
+
+    def __init__(self) -> None:
+        self._connections: list[WebSocket] = []
+
+    async def connect(self, websocket: WebSocket) -> None:
+        await websocket.accept()
+        self._connections.append(websocket)
+
+    def disconnect(self, websocket: WebSocket) -> None:
+        if websocket in self._connections:
+            self._connections.remove(websocket)
+
+    async def broadcast(self, content: str) -> None:
+        """向所有连接的客户端推送主动消息。"""
+        message = json.dumps({"type": "proactive", "content": content})
+        dead: list[WebSocket] = []
+        for ws in self._connections:
+            try:
+                await ws.send_text(message)
+            except Exception:
+                dead.append(ws)
+        for ws in dead:
+            self.disconnect(ws)
+
+    @property
+    def count(self) -> int:
+        return len(self._connections)
+
 HTML_PAGE = """<!DOCTYPE html>
 <html lang="zh">
 <head>
@@ -82,6 +113,8 @@ sendBtn.onclick = async () => {
     } else if (data.type === "done") {
       sendBtn.disabled = false;
       input.focus();
+    } else if (data.type === "proactive") {
+      addMsg("agent", data.content);
     }
   };
 };
@@ -95,10 +128,14 @@ ws.onopen = () => { addMsg("agent", "ProactiveMind 已连接，输入消息开�
 </html>"""
 
 
-def create_app(agent: AgentLoop) -> FastAPI:
+def create_app(
+    agent: AgentLoop,
+    connection_manager: ConnectionManager | None = None,
+) -> FastAPI:
     """创建 Web Chat FastAPI 应用。"""
 
     app = FastAPI(title="ProactiveMind Web Chat")
+    cm = connection_manager or ConnectionManager()
 
     @app.get("/")
     async def index() -> HTMLResponse:
@@ -106,7 +143,7 @@ def create_app(agent: AgentLoop) -> FastAPI:
 
     @app.websocket("/ws")
     async def websocket_endpoint(websocket: WebSocket) -> None:
-        await websocket.accept()
+        await cm.connect(websocket)
         try:
             while True:
                 raw = await websocket.receive_text()
@@ -124,5 +161,7 @@ def create_app(agent: AgentLoop) -> FastAPI:
             log.info("WebSocket 客户端断开")
         except Exception as exc:
             log.warning("WebSocket 错误: %s", exc)
+        finally:
+            cm.disconnect(websocket)
 
     return app

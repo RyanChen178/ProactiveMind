@@ -12,6 +12,7 @@ import asyncio
 import logging
 from dataclasses import dataclass
 from datetime import datetime, UTC
+from typing import Awaitable, Callable
 
 from proactive.drift import DriftLoop
 from proactive.energy import compute_urgency, next_interval
@@ -19,16 +20,19 @@ from proactive.presence import PresenceStore
 
 log = logging.getLogger(__name__)
 
+PushCallback = Callable[[str], Awaitable[None]]
+
 
 @dataclass
 class TickResult:
     """一轮主动推送的结果。"""
 
     tick_id: str
-    action: str  # "skipped" | "executed" | "no_content" | "drift"
+    action: str  # "skipped" | "executed" | "no_content" | "drift" | "pushed"
     urgency: float
     interval_s: float
     reason: str = ""
+    pushed_content: str = ""
 
 
 class ProactiveLoop:
@@ -40,11 +44,13 @@ class ProactiveLoop:
         *,
         is_passive_busy=None,
         drift_loop: DriftLoop | None = None,
+        push_callback: PushCallback | None = None,
         max_ticks: int | None = None,
     ) -> None:
         self._presence = presence
         self._is_passive_busy = is_passive_busy or (lambda: False)
         self._drift_loop = drift_loop
+        self._push_callback = push_callback
         self._max_ticks = max_ticks
         self._running = False
         self._tick_count = 0
@@ -110,6 +116,31 @@ class ProactiveLoop:
         # 如果有 Drift 且无内容可推，进入 Drift 空闲任务
         if self._drift_loop is not None:
             drift_result = await self._drift_loop.run()
+
+            # Drift 执行了 skill 且有 push_callback → 推送到客户端
+            if (
+                drift_result.action == "executed"
+                and drift_result.summary
+                and self._push_callback is not None
+            ):
+                push_text = (
+                    f"[Drift · {drift_result.skill_name}]\n{drift_result.summary}"
+                )
+                try:
+                    await self._push_callback(push_text)
+                    self._presence.record_proactive(now)
+                    log.info(
+                        "%s 推送: skill=%s", tick_id, drift_result.skill_name
+                    )
+                    return TickResult(
+                        tick_id=tick_id, action="pushed",
+                        urgency=urgency, interval_s=interval,
+                        reason="drift_push",
+                        pushed_content=push_text,
+                    )
+                except Exception as exc:
+                    log.warning("%s 推送失败: %s", tick_id, exc)
+
             action = (
                 "drift" if drift_result.action == "executed"
                 else "no_content"
