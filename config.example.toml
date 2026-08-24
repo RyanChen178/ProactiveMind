@@ -18,6 +18,10 @@ max_history_tokens = 6000
 # 每轮回复完成后，后台提取候选长期事实并写入 PENDING.md
 enabled = true
 
+[plugins]
+# 插件目录路径，留空则不加载插件
+dir = "plugins"
+
 [prompt]
 persona = "你是 ProactiveMind，一个有持久记忆的 AI 助手。"
 rules = [

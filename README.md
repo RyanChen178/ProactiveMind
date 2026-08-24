@@ -45,7 +45,7 @@ python -m unittest discover -s tests -v
 - **主动推送** —— 电量模型自适应轮询，用户空闲越久轮询越频繁
 - **Drift 空闲任务** —— 无内容可推时自主执行后台 skill
 - **Web Chat** —— FastAPI + WebSocket 浏览器对话界面
-- **插件系统** —— 声明式工具注册，plugins/ 目录自动发现
+- **插件系统** —— 声明式工具注册，plugins/ 目录自动发现，AgentLoop 启动时自动加载
 - **工具调用** —— 内置 shell、记忆检索等工具，可扩展
 - **OpenAI 兼容** —— 支持任意 OpenAI Chat Completions 兼容端点
 

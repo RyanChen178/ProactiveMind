@@ -16,6 +16,7 @@ from agent.session_store import SessionStore
 from agent.tools import ToolRegistry, build_default_tools
 from bus import EventBus, TurnCommitted
 from proactive.presence import PresenceStore
+from plugins.manager import PluginManager
 
 log = logging.getLogger(__name__)
 
@@ -39,6 +40,8 @@ class AgentLoop:
         self._consolidator = MemoryConsolidator(self._provider, self._memory)
         self._bus = bus or EventBus()
         self._presence = presence
+        self._plugin_manager: PluginManager | None = None
+        self._load_plugins()
         self._register_bus_handlers()
         self._refresh_system_prompt()
 
@@ -187,9 +190,21 @@ class AgentLoop:
         memory_text = self._memory.read_all().strip()
         self._system_prompt = PromptBuilder(self._config.prompt).build(memory_text)
 
+    def _load_plugins(self) -> None:
+        """加载配置中指定的插件目录，注册工具。"""
+        plugins_dir = getattr(self._config, "plugins_dir", None)
+        if plugins_dir is None or not plugins_dir.exists():
+            return
+        self._plugin_manager = PluginManager(plugins_dir)
+        loaded = self._plugin_manager.load_all(self._tools)
+        if loaded:
+            log.info("已加载 %d 个插件", len(loaded))
+
     async def aclose(self) -> None:
         try:
             await self._bus.drain()
+            if self._plugin_manager is not None:
+                await self._plugin_manager.unload_all()
             await self._provider.aclose()
         finally:
             self._session_store.close()
