@@ -47,6 +47,7 @@ python -m unittest discover -s tests -v
 - **Web Chat** —— FastAPI + WebSocket 浏览器对话界面
 - **插件系统** —— 声明式工具注册，plugins/ 目录自动发现，AgentLoop 启动时自动加载
 - **工具调用** —— 内置 shell、记忆检索等工具，可扩展
+- **工具权限** —— shell 命令安全审查，拦截 rm -rf、mkfs、dd 等危险操作
 - **OpenAI 兼容** —— 支持任意 OpenAI Chat Completions 兼容端点
 
 ## 项目结构
@@ -63,6 +64,7 @@ proactivemind/
 │   ├── context.py       # token 估算与历史视图
 │   ├── prompt.py        # 分层系统提示词
 │   ├── tools.py         # 工具注册 + 内置工具
+│   ├── permission.py    # 工具权限（shell 命令安全审查）
 │   ├── memory.py        # Markdown 文件记忆
 │   ├── consolidation.py # 候选长期记忆提取
 │   └── loop.py          # Agent ReAct 循环
@@ -88,7 +90,9 @@ proactivemind/
 │   ├── test_proactive.py     # 主动推送循环测试
 │   ├── test_drift.py         # Drift 空闲任务测试
 │   ├── test_web_chat.py      # Web Chat 渠道测试
+│   ├── test_connection_manager.py  # WebSocket 连接管理测试
 │   ├── test_plugins.py       # 插件系统测试
+│   ├── test_permission.py    # 工具权限测试
 │   ├── test_loop.py           # ReAct 循环测试
 │   └── test_session_store.py  # SQLite 会话存储测试
 └── ~/.proactivemind/

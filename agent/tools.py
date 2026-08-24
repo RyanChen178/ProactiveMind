@@ -8,6 +8,7 @@ from datetime import datetime
 from typing import Any, Callable, Awaitable
 
 from agent.provider import ToolCall
+from agent.permission import ToolPermission, create_default_permission
 
 
 # 工具执行函数的类型：接收 dict 参数，返回 str
@@ -47,8 +48,9 @@ class Tool:
 class ToolRegistry:
     """工具注册表。"""
 
-    def __init__(self) -> None:
+    def __init__(self, permission: ToolPermission | None = None) -> None:
         self._tools: dict[str, Tool] = {}
+        self._permission = permission or create_default_permission()
 
     def register(self, tool: Tool) -> None:
         self._tools[tool.name] = tool
@@ -60,6 +62,11 @@ class ToolRegistry:
         tool = self._tools.get(call.name)
         if tool is None:
             return f"错误：未知工具 '{call.name}'"
+
+        allowed, reason = self._permission.check(call.name, call.arguments)
+        if not allowed:
+            return f"权限拒绝：{reason}"
+
         try:
             return await tool.execute(call.arguments)
         except Exception as exc:
@@ -121,9 +128,12 @@ def _create_recall_func(memory_store):
     return _tool_recall
 
 
-def build_default_tools(memory_store) -> ToolRegistry:
+def build_default_tools(
+    memory_store,
+    permission: ToolPermission | None = None,
+) -> ToolRegistry:
     """构建默认工具集。"""
-    registry = ToolRegistry()
+    registry = ToolRegistry(permission=permission)
 
     registry.register(
         Tool(

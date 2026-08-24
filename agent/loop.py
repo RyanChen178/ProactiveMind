@@ -14,6 +14,7 @@ from agent.prompt import PromptBuilder
 from agent.session import Session
 from agent.session_store import SessionStore
 from agent.tools import ToolRegistry, build_default_tools
+from agent.permission import create_default_permission
 from bus import EventBus, TurnCommitted
 from proactive.presence import PresenceStore
 from plugins.manager import PluginManager
@@ -36,7 +37,9 @@ class AgentLoop:
         self._session_store = SessionStore(config.workspace / "sessions.db")
         self._session_id = self._session_store.get_or_create_active_session()
         self._session = self._load_session(self._session_id)
-        self._tools = build_default_tools(self._memory)
+        self._tools = build_default_tools(
+            self._memory, permission=create_default_permission()
+        )
         self._consolidator = MemoryConsolidator(self._provider, self._memory)
         self._bus = bus or EventBus()
         self._presence = presence
