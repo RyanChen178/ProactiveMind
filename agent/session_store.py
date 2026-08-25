@@ -172,7 +172,42 @@ class SessionStore:
             messages.append(message)
         return messages
 
+    def list_sessions(self) -> list[dict[str, Any]]:
+        """列出所有会话及其消息数。"""
+        rows = self._connection.execute(
+            """
+            SELECT s.id, s.created_at,
+                   COUNT(m.id) AS message_count,
+                   MAX(m.created_at) AS last_message_at
+            FROM sessions s
+            LEFT JOIN messages m ON m.session_id = s.id
+            GROUP BY s.id, s.created_at
+            ORDER BY s.created_at DESC
+            """
+        ).fetchall()
+
+        active_id = self.get_or_create_active_session()
+        return [
+            {
+                "id": row["id"],
+                "created_at": row["created_at"],
+                "message_count": row["message_count"],
+                "last_message_at": row["last_message_at"],
+                "is_active": row["id"] == active_id,
+            }
+            for row in rows
+        ]
+
+    def get_session_id_for_export(self, session_id: str) -> dict[str, Any] | None:
+        """返回会话元信息（用于导出）。"""
+        row = self._connection.execute(
+            "SELECT id, created_at FROM sessions WHERE id = ?",
+            (session_id,),
+        ).fetchone()
+        if row is None:
+            return None
+        return {"id": row["id"], "created_at": row["created_at"]}
+
     def close(self) -> None:
         """关闭数据库连接。"""
-
         self._connection.close()

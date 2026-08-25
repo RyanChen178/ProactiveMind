@@ -243,6 +243,57 @@ class AgentLoop:
 
         return self._memory.unpromoted_pending()
 
+    def list_sessions(self) -> list[dict]:
+        """列出所有会话。"""
+        return self._session_store.list_sessions()
+
+    def get_session_history(self, session_id: str) -> list[dict] | None:
+        """获取指定会话的消息历史。"""
+        info = self._session_store.get_session_id_for_export(session_id)
+        if info is None:
+            return None
+        return self._session_store.load_messages(session_id)
+
+    def switch_session(self, session_id: str) -> bool:
+        """切换到已有会话，返回是否成功。"""
+        info = self._session_store.get_session_id_for_export(session_id)
+        if info is None:
+            return False
+        self._session_id = session_id
+        self._session = self._load_session(session_id)
+        return True
+
+    def export_session_markdown(self, session_id: str) -> str | None:
+        """将会话历史导出为 Markdown。"""
+        info = self._session_store.get_session_id_for_export(session_id)
+        if info is None:
+            return None
+        messages = self._session_store.load_messages(session_id)
+        lines = [f"# 会话导出 {session_id}", ""]
+        lines.append(f"创建时间：{info['created_at']}")
+        lines.append("")
+        for msg in messages:
+            role = msg["role"]
+            content = msg.get("content", "")
+            if role == "user":
+                lines.append(f"## 用户")
+                lines.append("")
+                lines.append(content)
+                lines.append("")
+            elif role == "assistant":
+                lines.append(f"## 助手")
+                lines.append("")
+                lines.append(content)
+                lines.append("")
+            elif role == "tool":
+                lines.append(f"<details><summary>工具结果 ({msg.get('tool_call_id', '')})</summary>")
+                lines.append("")
+                lines.append(f"```\n{content}\n```")
+                lines.append("")
+                lines.append("</details>")
+                lines.append("")
+        return "\n".join(lines)
+
     def promote_pending_memories(self) -> list[str]:
         """将候选记忆提升到长期记忆。"""
 

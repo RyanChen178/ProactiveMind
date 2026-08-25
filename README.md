@@ -44,7 +44,7 @@ python -m unittest discover -s tests -v
 - **事件总线** —— emit/fanout/enqueue 三种语义，对话完成事件驱动后台归档
 - **主动推送** —— 电量模型自适应轮询，用户空闲越久轮询越频繁；Drift 结果可推送到 Web Chat 客户端
 - **Drift 空闲任务** —— 无内容可推时自主执行后台 skill
-- **Web Chat** —— FastAPI + WebSocket 浏览器对话界面
+- **Web Chat** —— FastAPI + WebSocket 浏览器对话界面，REST API 管理会话（列出/切换/导出）
 - **插件系统** —— 声明式工具注册，plugins/ 目录自动发现，AgentLoop 启动时自动加载
 - **工具调用** —— 内置 shell、记忆检索等工具，可扩展
 - **工具权限** —— shell 命令安全审查，拦截 rm -rf、mkfs、dd 等危险操作
@@ -95,7 +95,8 @@ proactivemind/
 │   ├── test_plugins.py       # 插件系统测试
 │   ├── test_permission.py    # 工具权限测试
 │   ├── test_loop.py           # ReAct 循环测试
-│   └── test_session_store.py  # SQLite 会话存储测试
+│   ├── test_session_api.py    # 会话管理 REST API 测试
+│   ├── test_session_store.py  # SQLite 会话存储测试
 └── ~/.proactivemind/
     └── workspace/
         ├── sessions.db    # 会话历史

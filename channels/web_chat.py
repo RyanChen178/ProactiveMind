@@ -157,6 +157,37 @@ def create_app(
         ]
         return {"summary": summary, "recent": recent}
 
+    @app.get("/sessions")
+    async def list_sessions() -> dict:
+        return {"sessions": agent.list_sessions()}
+
+    @app.get("/sessions/{session_id}")
+    async def get_session(session_id: str) -> dict:
+        messages = agent.get_session_history(session_id)
+        if messages is None:
+            return {"error": "会话不存在"}
+        return {"session_id": session_id, "messages": messages}
+
+    @app.post("/sessions/switch/{session_id}")
+    async def switch_session(session_id: str) -> dict:
+        ok = agent.switch_session(session_id)
+        if not ok:
+            return {"error": "会话不存在"}
+        return {"ok": True, "session_id": session_id}
+
+    @app.post("/sessions/reset")
+    async def reset_session() -> dict:
+        agent.reset_session()
+        return {"ok": True, "session_id": agent._session_id}
+
+    @app.get("/sessions/{session_id}/export")
+    async def export_session(session_id: str) -> str:
+        md = agent.export_session_markdown(session_id)
+        if md is None:
+            return "会话不存在"
+        from fastapi.responses import PlainTextResponse
+        return PlainTextResponse(md)
+
     @app.websocket("/ws")
     async def websocket_endpoint(websocket: WebSocket) -> None:
         await cm.connect(websocket)

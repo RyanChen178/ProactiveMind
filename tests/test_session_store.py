@@ -78,5 +78,44 @@ class SessionStoreTest(unittest.TestCase):
             store.close()
 
 
+class SessionStoreListTest(unittest.TestCase):
+    def test_list_sessions_returns_all_with_counts(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            store = SessionStore(Path(temp_dir) / "sessions.db")
+            s1 = store.get_or_create_active_session()
+            store.append_message(s1, {"role": "user", "content": "你好"})
+            store.append_message(s1, {"role": "assistant", "content": "你好呀"})
+
+            s2 = store.create_active_session()
+            store.append_message(s2, {"role": "user", "content": "在吗"})
+
+            sessions = store.list_sessions()
+
+            self.assertEqual(len(sessions), 2)
+            active = [s for s in sessions if s["is_active"]]
+            self.assertEqual(len(active), 1)
+            self.assertEqual(active[0]["id"], s2)
+
+            counts = {s["id"]: s["message_count"] for s in sessions}
+            self.assertEqual(counts[s1], 2)
+            self.assertEqual(counts[s2], 1)
+            store.close()
+
+    def test_list_sessions_empty_when_no_sessions(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            store = SessionStore(Path(temp_dir) / "sessions.db")
+            store.create_active_session()
+            sessions = store.list_sessions()
+            self.assertEqual(len(sessions), 1)
+            self.assertEqual(sessions[0]["message_count"], 0)
+            store.close()
+
+    def test_get_session_id_for_export_returns_none_when_missing(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            store = SessionStore(Path(temp_dir) / "sessions.db")
+            self.assertIsNone(store.get_session_id_for_export("nonexistent"))
+            store.close()
+
+
 if __name__ == "__main__":
     unittest.main()
