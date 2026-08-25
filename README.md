@@ -48,6 +48,7 @@ python -m unittest discover -s tests -v
 - **插件系统** —— 声明式工具注册，plugins/ 目录自动发现，AgentLoop 启动时自动加载
 - **工具调用** —— 内置 shell、记忆检索等工具，可扩展
 - **工具权限** —— shell 命令安全审查，拦截 rm -rf、mkfs、dd 等危险操作
+- **Turn 统计** —— 记录每轮对话的 token 用量、延迟、工具调用，`/stats` 端点可查
 - **OpenAI 兼容** —— 支持任意 OpenAI Chat Completions 兼容端点
 
 ## 项目结构

@@ -141,6 +141,22 @@ def create_app(
     async def index() -> HTMLResponse:
         return HTMLResponse(HTML_PAGE)
 
+    @app.get("/stats")
+    async def stats() -> dict:
+        summary = agent.stats.summary()
+        recent = [
+            {
+                "turn_id": r.turn_id,
+                "tool_calls": r.tool_calls,
+                "prompt_tokens": r.prompt_tokens,
+                "completion_tokens": r.completion_tokens,
+                "latency_ms": r.latency_ms,
+                "timestamp": r.timestamp,
+            }
+            for r in agent.stats.recent(20)
+        ]
+        return {"summary": summary, "recent": recent}
+
     @app.websocket("/ws")
     async def websocket_endpoint(websocket: WebSocket) -> None:
         await cm.connect(websocket)

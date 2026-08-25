@@ -95,6 +95,7 @@ def build_loop(
     loop._bus.start()
     loop._presence = None
     loop._plugin_manager = None
+    loop._stats = __import__("agent.stats", fromlist=["TurnStats"]).TurnStats()
     loop._register_bus_handlers()
     return loop, provider, tools
 

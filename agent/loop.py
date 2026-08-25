@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import time
 
 from agent.config import Config
 from agent.consolidation import MemoryConsolidator
@@ -13,6 +14,7 @@ from agent.provider import LLMProvider, LLMResponse
 from agent.prompt import PromptBuilder
 from agent.session import Session
 from agent.session_store import SessionStore
+from agent.stats import TurnStats
 from agent.tools import ToolRegistry, build_default_tools
 from agent.permission import create_default_permission
 from bus import EventBus, TurnCommitted
@@ -20,6 +22,14 @@ from proactive.presence import PresenceStore
 from plugins.manager import PluginManager
 
 log = logging.getLogger(__name__)
+
+
+def _merge_usage(target: dict[str, int], source: dict[str, int]) -> None:
+    """合并 LLM 返回的 token 用量到累积 dict。"""
+    for key in ("prompt_tokens", "completion_tokens", "total_tokens"):
+        val = source.get(key, 0)
+        if isinstance(val, (int, float)):
+            target[key] = target.get(key, 0) + int(val)
 
 
 class AgentLoop:
@@ -44,9 +54,14 @@ class AgentLoop:
         self._bus = bus or EventBus()
         self._presence = presence
         self._plugin_manager: PluginManager | None = None
+        self._stats = TurnStats()
         self._load_plugins()
         self._register_bus_handlers()
         self._refresh_system_prompt()
+
+    @property
+    def stats(self) -> TurnStats:
+        return self._stats
 
     async def run(self, user_input: str, max_steps: int = 10) -> str:
         """执行一轮对话：用户输入 → 可能多轮工具调用 → 最终回复。"""
@@ -55,23 +70,47 @@ class AgentLoop:
         if self._presence is not None:
             self._presence.record_user_message()
 
+        start = time.monotonic()
+        total_usage: dict[str, int] = {}
+        tool_names: list[str] = []
+
         for _step in range(max_steps):
             messages = self._build_messages()
             response = await self._provider.chat(
                 messages, tools=self._tools.get_schemas()
             )
+            _merge_usage(total_usage, response.usage)
 
             # 没有 tool_calls → 最终回复
             if not response.tool_calls:
                 self._session.add_assistant(response.content)
                 await self._emit_turn_committed(user_input, response.content)
+                latency_ms = (time.monotonic() - start) * 1000
+                self._stats.record(
+                    session_id=self._session_id,
+                    user_input=user_input,
+                    assistant_reply=response.content,
+                    tool_calls=tool_names,
+                    usage=total_usage,
+                    latency_ms=latency_ms,
+                )
                 return response.content
 
             # 有 tool_calls → 执行工具后继续循环
+            tool_names.extend(c.name for c in response.tool_calls)
             await self._execute_tool_calls(response)
 
         message = "（达到最大工具调用次数，终止本轮）"
         self._session.add_assistant(message)
+        latency_ms = (time.monotonic() - start) * 1000
+        self._stats.record(
+            session_id=self._session_id,
+            user_input=user_input,
+            assistant_reply=message,
+            tool_calls=tool_names,
+            usage=total_usage,
+            latency_ms=latency_ms,
+        )
         return message
 
     async def run_stream(
@@ -82,6 +121,11 @@ class AgentLoop:
         self._session.add_user(user_input)
         if self._presence is not None:
             self._presence.record_user_message()
+
+        start = time.monotonic()
+        total_usage: dict[str, int] = {}
+        tool_names: list[str] = []
+
         for _step in range(max_steps):
             response: LLMResponse | None = None
             async for event in self._provider.chat_stream(
@@ -93,14 +137,34 @@ class AgentLoop:
                     response = event.response
             if response is None:
                 raise RuntimeError("LLM 流式响应缺少最终结果")
+            _merge_usage(total_usage, response.usage)
             if not response.tool_calls:
                 self._session.add_assistant(response.content)
                 await self._emit_turn_committed(user_input, response.content)
+                latency_ms = (time.monotonic() - start) * 1000
+                self._stats.record(
+                    session_id=self._session_id,
+                    user_input=user_input,
+                    assistant_reply=response.content,
+                    tool_calls=tool_names,
+                    usage=total_usage,
+                    latency_ms=latency_ms,
+                )
                 return
+            tool_names.extend(c.name for c in response.tool_calls)
             await self._execute_tool_calls(response)
 
         message = "（达到最大工具调用次数，终止本轮）"
         self._session.add_assistant(message)
+        latency_ms = (time.monotonic() - start) * 1000
+        self._stats.record(
+            session_id=self._session_id,
+            user_input=user_input,
+            assistant_reply=message,
+            tool_calls=tool_names,
+            usage=total_usage,
+            latency_ms=latency_ms,
+        )
         yield message
 
     async def _execute_tool_calls(self, response: LLMResponse) -> None:
