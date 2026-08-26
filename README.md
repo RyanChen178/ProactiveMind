@@ -31,6 +31,21 @@ python app.py web
 python -m unittest discover -s tests -v
 ```
 
+## Docker 部署
+
+```bash
+# 构建并启动
+docker compose up -d
+
+# 查看日志
+docker compose logs -f
+
+# 停止
+docker compose down
+```
+
+默认暴露 `6322` 端口，配置文件从 `config.toml` 挂载，扩展目录从 `extensions/` 挂载。
+
 ## 核心特征
 
 - **ReAct 循环** —— 推理 + 行动交替执行，支持多轮工具调用

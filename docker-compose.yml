@@ -1,0 +1,13 @@
+services:
+  proactivemind:
+    build: .
+    ports:
+      - "6322:6322"
+    volumes:
+      - proactivemind-data:/root/.proactivemind
+      - ./config.toml:/app/config.toml:ro
+      - ./extensions:/app/extensions:ro
+    restart: unless-stopped
+
+volumes:
+  proactivemind-data:
