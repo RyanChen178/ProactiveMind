@@ -1,4 +1,4 @@
-"""主动推送 —— ProactiveLoop 定时轮询骨架。
+"""主动推送 —— InitiativeLoop 定时轮询骨架。
 
 每轮 tick 流程：
   1. Gate    —— 检查是否应该执行（被动回复忙、冷却中、概率跳过）
@@ -14,9 +14,9 @@ from dataclasses import dataclass
 from datetime import datetime, UTC
 from typing import Awaitable, Callable
 
-from proactive.drift import DriftLoop
-from proactive.energy import compute_urgency, next_interval
-from proactive.presence import PresenceStore
+from initiative.drift import WanderLoop
+from initiative.energy import compute_urgency, next_interval
+from initiative.presence import PresenceStore
 
 log = logging.getLogger(__name__)
 
@@ -35,7 +35,7 @@ class TickResult:
     pushed_content: str = ""
 
 
-class ProactiveLoop:
+class InitiativeLoop:
     """主动推送定时循环。"""
 
     def __init__(
@@ -43,7 +43,7 @@ class ProactiveLoop:
         presence: PresenceStore,
         *,
         is_passive_busy=None,
-        drift_loop: DriftLoop | None = None,
+        drift_loop: WanderLoop | None = None,
         push_callback: PushCallback | None = None,
         max_ticks: int | None = None,
     ) -> None:
@@ -58,7 +58,7 @@ class ProactiveLoop:
     async def run(self) -> None:
         """启动轮询循环。"""
         self._running = True
-        log.info("ProactiveLoop 启动")
+        log.info("InitiativeLoop 启动")
 
         while self._running:
             last_user_at = self._presence.get_last_user_at()
@@ -77,7 +77,7 @@ class ProactiveLoop:
             if self._max_ticks and self._tick_count >= self._max_ticks:
                 break
 
-        log.info("ProactiveLoop 停止")
+        log.info("InitiativeLoop 停止")
 
     async def _tick(self) -> TickResult:
         """执行一轮主动推送检查。"""

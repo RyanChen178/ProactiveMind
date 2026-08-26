@@ -11,15 +11,15 @@
 pip install -r requirements.txt
 
 # 创建配置文件
-cp config.example.toml config.toml
+cp config.sample.toml config.toml
 # 编辑 config.toml 填入你的 API Key
 
 # 启动对话
-python main.py
+python app.py
 
 # 启动 Web Chat
 pip install -e ".[web]"
-python main.py web
+python app.py web
 # 浏览器访问 http://127.0.0.1:6322
 ```
 
@@ -41,23 +41,23 @@ python -m unittest discover -s tests -v
 - **持久记忆** —— 对话中保存的事实写入 `MEMORY.md`，跨会话保留
 - **自动记忆归档** —— 对话结束后后台提取候选事实，先写入 `PENDING.md`
 - **记忆人工提升** —— 使用 `/pending` 查看候选事实，`/promote` 显式追加到长期记忆
-- **事件总线** —— emit/fanout/enqueue 三种语义，对话完成事件驱动后台归档
-- **主动推送** —— 电量模型自适应轮询，用户空闲越久轮询越频繁；Drift 结果可推送到 Web Chat 客户端
-- **Drift 空闲任务** —— 无内容可推时自主执行后台 skill
+- **事件枢纽** —— emit/fanout/enqueue 三种语义，对话完成事件驱动后台归档
+- **主动推送** —— 电量模型自适应轮询，用户空闲越久轮询越频繁；Wander 结果可推送到 Web Chat 客户端
+- **Wander 空闲任务** —— 无内容可推时自主执行后台 playbook
 - **Web Chat** —— FastAPI + WebSocket 浏览器对话界面，REST API 管理会话（列出/切换/导出）
-- **插件系统** —— 声明式工具注册，plugins/ 目录自动发现，AgentLoop 启动时自动加载
+- **扩展系统** —— 声明式工具注册，extensions/ 目录自动发现，MindLoop 启动时自动加载
 - **工具调用** —— 内置 shell、记忆检索等工具，可扩展
 - **工具权限** —— shell 命令安全审查，拦截 rm -rf、mkfs、dd 等危险操作
-- **Turn 统计** —— 记录每轮对话的 token 用量、延迟、工具调用，`/stats` 端点可查
+- **Turn 指标** —— 记录每轮对话的 token 用量、延迟、工具调用，`/stats` 端点可查
 - **OpenAI 兼容** —— 支持任意 OpenAI Chat Completions 兼容端点
 
 ## 项目结构
 
 ```
 proactivemind/
-├── main.py              # 入口（CLI / Web 模式）
-├── config.example.toml  # 配置模板
-├── agent/
+├── app.py               # 入口（CLI / Web 模式）
+├── config.sample.toml   # 配置模板
+├── mind/
 │   ├── config.py        # 配置加载
 │   ├── provider.py      # LLM 调用（OpenAI 兼容）
 │   ├── session.py       # 会话消息历史
@@ -66,37 +66,40 @@ proactivemind/
 │   ├── prompt.py        # 分层系统提示词
 │   ├── tools.py         # 工具注册 + 内置工具
 │   ├── permission.py    # 工具权限（shell 命令安全审查）
+│   ├── stats.py         # Turn 指标收集
 │   ├── memory.py        # Markdown 文件记忆
 │   ├── consolidation.py # 候选长期记忆提取
-│   └── loop.py          # Agent ReAct 循环
-├── bus/
-│   └── __init__.py      # 事件总线（emit/fanout/enqueue）
-├── channels/
+│   └── loop.py          # MindLoop ReAct 循环
+├── events/
+│   └── __init__.py      # 事件枢纽（emit/fanout/enqueue）
+├── gateways/
 │   └── web_chat.py      # FastAPI + WebSocket Web Chat
-├── plugins/
-│   ├── __init__.py      # 插件系统公共接口
-│   ├── manager.py       # PluginManager（发现 + 加载 + 注册）
-│   └── notes.py         # 示例插件（take_note / list_notes）
-├── proactive/
+├── extensions/
+│   ├── __init__.py      # 扩展系统公共接口
+│   ├── manager.py       # ExtensionManager（发现 + 加载 + 注册）
+│   └── notes.py         # 示例扩展（take_note / list_notes）
+├── initiative/
 │   ├── energy.py        # 电量模型（三段衰减 + 自适应间隔）
 │   ├── presence.py      # 用户活跃心跳追踪
-│   ├── drift.py         # Drift 空闲任务（扫描执行 SKILL.md）
+│   ├── drift.py         # Wander 空闲任务（扫描执行 PLAYBOOK.md）
 │   └── loop.py          # 主动推送定时循环
-├── skills/
+├── playbooks/
 │   └── audit-memory/
-│       └── SKILL.md     # 后台任务指南示例
+│       └── PLAYBOOK.md  # 后台任务指南示例
 ├── tests/
-│   ├── test_bus.py            # 事件总线测试
+│   ├── test_events.py         # 事件枢纽测试
 │   ├── test_energy.py         # 电量模型测试
-│   ├── test_proactive.py     # 主动推送循环测试
-│   ├── test_drift.py         # Drift 空闲任务测试
-│   ├── test_web_chat.py      # Web Chat 渠道测试
-│   ├── test_connection_manager.py  # WebSocket 连接管理测试
-│   ├── test_plugins.py       # 插件系统测试
-│   ├── test_permission.py    # 工具权限测试
-│   ├── test_loop.py           # ReAct 循环测试
+│   ├── test_initiative.py     # 主动推送循环测试
+│   ├── test_wander.py         # Wander 空闲任务测试
+│   ├── test_web_chat.py       # Web Chat 网关测试
+│   ├── test_socket_hub.py     # WebSocket 连接管理测试
+│   ├── test_extensions.py     # 扩展系统测试
+│   ├── test_extension_integration.py  # 扩展集成测试
+│   ├── test_permission.py     # 工具权限测试
+│   ├── test_mind_loop.py      # ReAct 循环测试
+│   ├── test_stats.py          # Turn 指标测试
 │   ├── test_session_api.py    # 会话管理 REST API 测试
-│   ├── test_session_store.py  # SQLite 会话存储测试
+│   └── test_session_store.py  # SQLite 会话存储测试
 └── ~/.proactivemind/
     └── workspace/
         ├── sessions.db    # 会话历史

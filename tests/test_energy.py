@@ -5,7 +5,7 @@ from __future__ import annotations
 import unittest
 from datetime import datetime, timedelta
 
-from proactive.energy import compute_energy, compute_urgency, next_interval
+from initiative.energy import compute_energy, compute_urgency, next_interval
 
 
 class EnergyModelTest(unittest.TestCase):

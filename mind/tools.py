@@ -7,8 +7,8 @@ import subprocess
 from datetime import datetime
 from typing import Any, Callable, Awaitable
 
-from agent.provider import ToolCall
-from agent.permission import ToolPermission, create_default_permission
+from mind.provider import ToolCall
+from mind.permission import ToolPermission, create_default_permission
 
 
 # 工具执行函数的类型：接收 dict 参数，返回 str
@@ -128,7 +128,7 @@ def _create_recall_func(memory_store):
     return _tool_recall
 
 
-def build_default_tools(
+def build_core_tools(
     memory_store,
     permission: ToolPermission | None = None,
 ) -> ToolRegistry:

@@ -6,9 +6,9 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from agent.consolidation import MemoryConsolidator
-from agent.memory import MemoryStore
-from agent.provider import LLMResponse
+from mind.consolidation import MemoryConsolidator
+from mind.memory import MemoryStore
+from mind.provider import LLMResponse
 
 
 class FakeProvider:

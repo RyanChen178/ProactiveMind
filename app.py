@@ -11,27 +11,27 @@ import asyncio
 import logging
 import sys
 
-from agent.config import load_config
-from agent.loop import AgentLoop
-from bus import EventBus
-from proactive.loop import ProactiveLoop
-from proactive.presence import PresenceStore
+from mind.config import load_config
+from mind.loop import MindLoop
+from events import EventHub
+from initiative.loop import InitiativeLoop
+from initiative.presence import PresenceStore
 
 
 def _build_agent():
-    """加载配置，构建 Agent + ProactiveLoop + EventBus。"""
+    """加载配置，构建 Agent + InitiativeLoop + EventHub。"""
     try:
         config = load_config("config.toml")
     except FileNotFoundError as exc:
         print(f"配置错误: {exc}")
         raise
 
-    bus = EventBus()
+    bus = EventHub()
     bus.start()
     presence = PresenceStore(config.workspace / "presence.db")
-    agent = AgentLoop(config, bus=bus, presence=presence)
+    agent = MindLoop(config, bus=bus, presence=presence)
 
-    proactive_loop = ProactiveLoop(
+    proactive_loop = InitiativeLoop(
         presence,
         is_passive_busy=lambda: False,
     )
@@ -93,11 +93,11 @@ async def web_server() -> None:
     """启动 Web Chat 服务。"""
     import uvicorn
 
-    from channels.web_chat import ConnectionManager, create_app
+    from gateways.web_chat import SocketHub, create_app
 
     agent, bus, presence, proactive_loop = _build_agent()
 
-    cm = ConnectionManager()
+    cm = SocketHub()
     proactive_loop._push_callback = cm.broadcast
 
     proactive_task = asyncio.create_task(proactive_loop.run())

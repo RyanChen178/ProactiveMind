@@ -8,12 +8,12 @@ import unittest
 from pathlib import Path
 from types import SimpleNamespace
 
-from agent.config import PromptConfig
-from agent.loop import AgentLoop
-from agent.memory import MemoryStore
-from agent.provider import LLMResponse, StreamEvent, ToolCall
-from agent.session import Session
-from bus import EventBus
+from mind.config import PromptConfig
+from mind.loop import MindLoop
+from mind.memory import MemoryStore
+from mind.provider import LLMResponse, StreamEvent, ToolCall
+from mind.session import Session
+from events import EventHub
 
 
 class FakeProvider:
@@ -79,10 +79,10 @@ class FakeConsolidator:
 def build_loop(
     responses: list[LLMResponse],
     tool_results: dict[str, str] | None = None,
-) -> tuple[AgentLoop, FakeProvider, FakeTools]:
-    """构建不访问网络和文件的 AgentLoop。"""
+) -> tuple[MindLoop, FakeProvider, FakeTools]:
+    """构建不访问网络和文件的 MindLoop。"""
 
-    loop = AgentLoop.__new__(AgentLoop)
+    loop = MindLoop.__new__(MindLoop)
     provider = FakeProvider(responses)
     tools = FakeTools(tool_results)
     loop._provider = provider
@@ -91,19 +91,19 @@ def build_loop(
     loop._config = SimpleNamespace(max_history_tokens=6000)
     loop._system_prompt = "system"
     loop._tools = tools
-    loop._bus = EventBus()
+    loop._bus = EventHub()
     loop._bus.start()
     loop._presence = None
-    loop._plugin_manager = None
-    loop._stats = __import__("agent.stats", fromlist=["TurnStats"]).TurnStats()
+    loop._extension_manager = None
+    loop._stats = __import__("mind.stats", fromlist=["TurnStats"]).TurnStats()
     loop._register_bus_handlers()
     return loop, provider, tools
 
 
-class AgentLoopTest(unittest.IsolatedAsyncioTestCase):
+class MindLoopTest(unittest.IsolatedAsyncioTestCase):
     def test_promotes_memory_and_refreshes_system_prompt(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
-            loop = AgentLoop.__new__(AgentLoop)
+            loop = MindLoop.__new__(MindLoop)
             loop._config = SimpleNamespace(prompt=PromptConfig())
             loop._memory = MemoryStore(Path(temp_dir))
             loop._memory.append_pending(["用户长期维护 ProactiveMind 项目"])

@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import json
 
-from agent.memory import MemoryStore
-from agent.provider import LLMProvider
+from mind.memory import MemoryStore
+from mind.provider import LLMProvider
 
 CONSOLIDATION_PROMPT = """\
 你负责从一轮用户与助手对话中提取值得长期保留的用户事实。

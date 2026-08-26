@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import unittest
 
-from agent.context import build_history_view, estimate_message_tokens
+from mind.context import build_history_view, estimate_message_tokens
 
 
 class ContextTest(unittest.TestCase):

@@ -1,9 +1,9 @@
 """Drift 空闲任务 —— 没内容可推时，Agent 自主选择并执行后台 skill。
 
 流程：
-  1. Scan     —— 扫描 workspace/skills/ 目录，收集 SKILL.md 列表
+  1. Scan     —— 扫描 workspace/skills/ 目录，收集 PLAYBOOK.md 列表
   2. Select   —— 让 LLM 从可用 skill 中选一个执行（或判断无事可做）
-  3. Execute  —— 把 SKILL.md 内容作为指导，让 LLM 自主完成步骤
+  3. Execute  —— 把 PLAYBOOK.md 内容作为指导，让 LLM 自主完成步骤
   4. Finish   —— 记录执行结果
 """
 
@@ -14,15 +14,15 @@ from dataclasses import dataclass, field
 from datetime import datetime, UTC
 from pathlib import Path
 
-from agent.provider import LLMProvider
+from mind.provider import LLMProvider
 
 log = logging.getLogger(__name__)
 
-SKILL_FILENAME = "SKILL.md"
+PLAYBOOK_FILENAME = "PLAYBOOK.md"
 
 
 @dataclass
-class SkillEntry:
+class PlaybookEntry:
     """一个可执行的后台 skill。"""
 
     name: str
@@ -31,7 +31,7 @@ class SkillEntry:
 
 
 @dataclass
-class DriftResult:
+class WanderResult:
     """一轮 Drift 的执行结果。"""
 
     action: str  # "executed" | "idle" | "no_skills"
@@ -40,7 +40,7 @@ class DriftResult:
     timestamp: str = ""
 
 
-class DriftLoop:
+class WanderLoop:
     """空闲时自主执行后台任务的循环。"""
 
     def __init__(
@@ -51,28 +51,28 @@ class DriftLoop:
         self._provider = provider
         self._skills_dir = skills_dir
 
-    def scan_skills(self) -> list[SkillEntry]:
-        """扫描 skills 目录，返回所有包含 SKILL.md 的子目录。"""
+    def scan_playbooks(self) -> list[PlaybookEntry]:
+        """扫描 skills 目录，返回所有包含 PLAYBOOK.md 的子目录。"""
         if not self._skills_dir.exists():
             return []
-        skills: list[SkillEntry] = []
+        skills: list[PlaybookEntry] = []
         for child in sorted(self._skills_dir.iterdir()):
             if not child.is_dir():
                 continue
-            skill_file = child / SKILL_FILENAME
+            skill_file = child / PLAYBOOK_FILENAME
             if not skill_file.exists():
                 continue
             description = _extract_first_heading(skill_file.read_text(encoding="utf-8"))
             skills.append(
-                SkillEntry(name=child.name, path=skill_file, description=description)
+                PlaybookEntry(name=child.name, path=skill_file, description=description)
             )
         return skills
 
-    async def run(self) -> DriftResult:
+    async def run(self) -> WanderResult:
         """执行一轮 Drift：扫描 skill → LLM 选择 → 执行。"""
-        skills = self.scan_skills()
+        skills = self.scan_playbooks()
         if not skills:
-            return DriftResult(action="no_skills", timestamp=_now_iso())
+            return WanderResult(action="no_skills", timestamp=_now_iso())
 
         skill_list_text = "\n".join(
             f"- {s.name}: {s.description}" for s in skills
@@ -96,13 +96,13 @@ class DriftLoop:
 
         choice = response.content.strip()
         if choice.upper() == "NONE" or not choice:
-            return DriftResult(
+            return WanderResult(
                 action="idle", timestamp=_now_iso(), summary="LLM 判断无事可做"
             )
 
         selected = next((s for s in skills if s.name == choice), None)
         if selected is None:
-            return DriftResult(
+            return WanderResult(
                 action="idle",
                 timestamp=_now_iso(),
                 summary=f"LLM 选择了不存在的 skill: {choice}",
@@ -110,14 +110,14 @@ class DriftLoop:
 
         return await self._execute_skill(selected)
 
-    async def _execute_skill(self, skill: SkillEntry) -> DriftResult:
-        """读取 SKILL.md 内容并让 LLM 自主执行。"""
+    async def _execute_skill(self, skill: PlaybookEntry) -> WanderResult:
+        """读取 PLAYBOOK.md 内容并让 LLM 自主执行。"""
         skill_content = skill.path.read_text(encoding="utf-8")
 
         execute_prompt = (
             "请按照以下 skill 指南执行任务。使用可用工具完成步骤，"
             "完成后给出简要总结。\n\n"
-            f"--- {skill.name} SKILL.md ---\n{skill_content}"
+            f"--- {skill.name} PLAYBOOK.md ---\n{skill_content}"
         )
 
         response = await self._provider.chat(
@@ -131,7 +131,7 @@ class DriftLoop:
         )
 
         log.info("Drift 执行 skill=%s", skill.name)
-        return DriftResult(
+        return WanderResult(
             action="executed",
             skill_name=skill.name,
             summary=response.content[:500],

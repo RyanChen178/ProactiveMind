@@ -13,12 +13,12 @@ from typing import Any
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse
 
-from agent.loop import AgentLoop
+from mind.loop import MindLoop
 
 log = logging.getLogger(__name__)
 
 
-class ConnectionManager:
+class SocketHub:
     """管理 WebSocket 连接，支持向所有客户端广播。"""
 
     def __init__(self) -> None:
@@ -129,13 +129,13 @@ ws.onopen = () => { addMsg("agent", "ProactiveMind 已连接，输入消息开�
 
 
 def create_app(
-    agent: AgentLoop,
-    connection_manager: ConnectionManager | None = None,
+    agent: MindLoop,
+    connection_manager: SocketHub | None = None,
 ) -> FastAPI:
     """创建 Web Chat FastAPI 应用。"""
 
     app = FastAPI(title="ProactiveMind Web Chat")
-    cm = connection_manager or ConnectionManager()
+    cm = connection_manager or SocketHub()
 
     @app.get("/")
     async def index() -> HTMLResponse:

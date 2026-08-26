@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import unittest
 
-from agent.provider import LLMProvider
+from mind.provider import LLMProvider
 
 
 class StreamToolCallTest(unittest.TestCase):

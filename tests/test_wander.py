@@ -6,8 +6,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from proactive.drift import DriftLoop
-from agent.provider import LLMResponse
+from initiative.drift import WanderLoop
+from mind.provider import LLMResponse
 
 
 class FakeProvider:
@@ -22,15 +22,15 @@ class FakeProvider:
         return next(self._responses)
 
 
-class DriftLoopTest(unittest.IsolatedAsyncioTestCase):
+class WanderLoopTest(unittest.IsolatedAsyncioTestCase):
     def _make_skills_dir(self, temp_dir: str) -> Path:
         skills_dir = Path(temp_dir) / "skills"
         (skills_dir / "audit-memory").mkdir(parents=True)
-        (skills_dir / "audit-memory" / "SKILL.md").write_text(
+        (skills_dir / "audit-memory" / "PLAYBOOK.md").write_text(
             "# 审计长期记忆\n\n检查 MEMORY.md", encoding="utf-8"
         )
         (skills_dir / "self-check").mkdir(parents=True)
-        (skills_dir / "self-check" / "SKILL.md").write_text(
+        (skills_dir / "self-check" / "PLAYBOOK.md").write_text(
             "# 自我诊断\n\n检查系统状态", encoding="utf-8"
         )
         return skills_dir
@@ -38,9 +38,9 @@ class DriftLoopTest(unittest.IsolatedAsyncioTestCase):
     def test_scan_finds_all_skills_with_md(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             skills_dir = self._make_skills_dir(temp_dir)
-            drift = DriftLoop(FakeProvider([]), skills_dir)
+            drift = WanderLoop(FakeProvider([]), skills_dir)
 
-            skills = drift.scan_skills()
+            skills = drift.scan_playbooks()
 
             names = [s.name for s in skills]
             self.assertEqual(names, ["audit-memory", "self-check"])
@@ -49,13 +49,13 @@ class DriftLoopTest(unittest.IsolatedAsyncioTestCase):
 
     def test_scan_returns_empty_when_no_skills(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
-            drift = DriftLoop(FakeProvider([]), Path(temp_dir) / "skills")
+            drift = WanderLoop(FakeProvider([]), Path(temp_dir) / "skills")
 
-            self.assertEqual(drift.scan_skills(), [])
+            self.assertEqual(drift.scan_playbooks(), [])
 
     async def test_returns_no_skills_when_empty(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
-            drift = DriftLoop(FakeProvider([]), Path(temp_dir) / "skills")
+            drift = WanderLoop(FakeProvider([]), Path(temp_dir) / "skills")
 
             result = await drift.run()
 
@@ -68,7 +68,7 @@ class DriftLoopTest(unittest.IsolatedAsyncioTestCase):
                 LLMResponse(content="audit-memory"),
                 LLMResponse(content="审计完成，发现 2 条过时记忆"),
             ])
-            drift = DriftLoop(provider, skills_dir)
+            drift = WanderLoop(provider, skills_dir)
 
             result = await drift.run()
 
@@ -81,7 +81,7 @@ class DriftLoopTest(unittest.IsolatedAsyncioTestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             skills_dir = self._make_skills_dir(temp_dir)
             provider = FakeProvider([LLMResponse(content="NONE")])
-            drift = DriftLoop(provider, skills_dir)
+            drift = WanderLoop(provider, skills_dir)
 
             result = await drift.run()
 
@@ -92,7 +92,7 @@ class DriftLoopTest(unittest.IsolatedAsyncioTestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             skills_dir = self._make_skills_dir(temp_dir)
             provider = FakeProvider([LLMResponse(content="nonexistent-skill")])
-            drift = DriftLoop(provider, skills_dir)
+            drift = WanderLoop(provider, skills_dir)
 
             result = await drift.run()
 

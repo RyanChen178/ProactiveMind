@@ -6,7 +6,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from agent.config import load_config
+from mind.config import load_config
 
 
 class ConfigTest(unittest.TestCase):

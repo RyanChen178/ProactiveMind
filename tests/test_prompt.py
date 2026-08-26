@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import unittest
 
-from agent.config import PromptConfig
-from agent.prompt import PromptBuilder
+from mind.config import PromptConfig
+from mind.prompt import PromptBuilder
 
 
 class PromptBuilderTest(unittest.TestCase):

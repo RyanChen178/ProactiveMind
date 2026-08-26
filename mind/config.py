@@ -42,7 +42,7 @@ class Config:
     consolidation: ConsolidationConfig = field(
         default_factory=ConsolidationConfig
     )
-    plugins_dir: Path | None = None
+    extensions_dir: Path | None = None
 
 
 def load_config(path: str = "config.toml") -> Config:
@@ -51,7 +51,7 @@ def load_config(path: str = "config.toml") -> Config:
     config_path = Path(path)
     if not config_path.exists():
         raise FileNotFoundError(
-            f"找不到配置文件 {path}，请参考 config.example.toml 创建"
+            f"找不到配置文件 {path}，请参考 config.sample.toml 创建"
         )
 
     raw = config_path.read_text(encoding="utf-8")
@@ -78,7 +78,7 @@ def load_config(path: str = "config.toml") -> Config:
     context_section = data.get("context", {})
     prompt_section = data.get("prompt", {})
     consolidation_section = data.get("consolidation", {})
-    plugins_section = data.get("plugins", {})
+    extensions_section = data.get("extensions", {})
     rules = prompt_section.get("rules", PromptConfig().rules)
     consolidation_enabled = consolidation_section.get("enabled", True)
     if not isinstance(rules, list) or not all(isinstance(rule, str) for rule in rules):
@@ -86,10 +86,10 @@ def load_config(path: str = "config.toml") -> Config:
     if not isinstance(consolidation_enabled, bool):
         raise ValueError("[consolidation].enabled 必须是布尔值")
 
-    plugins_dir_str = plugins_section.get("dir", "")
-    plugins_dir = (
-        Path(plugins_dir_str).expanduser().resolve()
-        if plugins_dir_str
+    extensions_dir_str = extensions_section.get("dir", "")
+    extensions_dir = (
+        Path(extensions_dir_str).expanduser().resolve()
+        if extensions_dir_str
         else None
     )
 
@@ -109,5 +109,5 @@ def load_config(path: str = "config.toml") -> Config:
         consolidation=ConsolidationConfig(
             enabled=consolidation_enabled
         ),
-        plugins_dir=plugins_dir,
+        extensions_dir=extensions_dir,
     )

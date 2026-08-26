@@ -1,4 +1,4 @@
-"""ConnectionManager 测试。"""
+"""SocketHub 测试。"""
 
 from __future__ import annotations
 
@@ -7,12 +7,12 @@ import json
 import unittest
 from unittest.mock import AsyncMock, MagicMock
 
-from channels.web_chat import ConnectionManager
+from gateways.web_chat import SocketHub
 
 
-class ConnectionManagerTest(unittest.IsolatedAsyncioTestCase):
+class SocketHubTest(unittest.IsolatedAsyncioTestCase):
     async def test_broadcast_sends_to_all_connections(self) -> None:
-        cm = ConnectionManager()
+        cm = SocketHub()
         ws1 = AsyncMock()
         ws2 = AsyncMock()
         cm._connections = [ws1, ws2]
@@ -24,7 +24,7 @@ class ConnectionManagerTest(unittest.IsolatedAsyncioTestCase):
         ws2.send_text.assert_awaited_once_with(expected)
 
     async def test_broadcast_removes_dead_connections(self) -> None:
-        cm = ConnectionManager()
+        cm = SocketHub()
         ws_alive = AsyncMock()
         ws_dead = AsyncMock()
         ws_dead.send_text.side_effect = RuntimeError("disconnected")
@@ -37,12 +37,12 @@ class ConnectionManagerTest(unittest.IsolatedAsyncioTestCase):
         self.assertIn(ws_alive, cm._connections)
 
     async def test_broadcast_empty_does_nothing(self) -> None:
-        cm = ConnectionManager()
+        cm = SocketHub()
         await cm.broadcast("test")
         self.assertEqual(cm.count, 0)
 
     def test_disconnect_removes_connection(self) -> None:
-        cm = ConnectionManager()
+        cm = SocketHub()
         ws = MagicMock()
         cm._connections = [ws]
 
@@ -51,7 +51,7 @@ class ConnectionManagerTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(cm.count, 0)
 
     def test_disconnect_ignores_unknown_connection(self) -> None:
-        cm = ConnectionManager()
+        cm = SocketHub()
         ws = MagicMock()
         cm.disconnect(ws)
         self.assertEqual(cm.count, 0)

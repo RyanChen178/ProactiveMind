@@ -7,19 +7,19 @@ import json
 import logging
 import time
 
-from agent.config import Config
-from agent.consolidation import MemoryConsolidator
-from agent.memory import MemoryStore
-from agent.provider import LLMProvider, LLMResponse
-from agent.prompt import PromptBuilder
-from agent.session import Session
-from agent.session_store import SessionStore
-from agent.stats import TurnStats
-from agent.tools import ToolRegistry, build_default_tools
-from agent.permission import create_default_permission
-from bus import EventBus, TurnCommitted
-from proactive.presence import PresenceStore
-from plugins.manager import PluginManager
+from mind.config import Config
+from mind.consolidation import MemoryConsolidator
+from mind.memory import MemoryStore
+from mind.provider import LLMProvider, LLMResponse
+from mind.prompt import PromptBuilder
+from mind.session import Session
+from mind.session_store import SessionStore
+from mind.stats import TurnStats
+from mind.tools import ToolRegistry, build_core_tools
+from mind.permission import create_default_permission
+from events import EventHub, TurnCompleted
+from initiative.presence import PresenceStore
+from extensions.manager import ExtensionManager
 
 log = logging.getLogger(__name__)
 
@@ -32,13 +32,13 @@ def _merge_usage(target: dict[str, int], source: dict[str, int]) -> None:
             target[key] = target.get(key, 0) + int(val)
 
 
-class AgentLoop:
+class MindLoop:
     """ReAct 循环：接收用户输入 → 调用 LLM → 执行工具 → 返回回复。"""
 
     def __init__(
         self,
         config: Config,
-        bus: EventBus | None = None,
+        bus: EventHub | None = None,
         presence: PresenceStore | None = None,
     ) -> None:
         self._config = config
@@ -47,15 +47,15 @@ class AgentLoop:
         self._session_store = SessionStore(config.workspace / "sessions.db")
         self._session_id = self._session_store.get_or_create_active_session()
         self._session = self._load_session(self._session_id)
-        self._tools = build_default_tools(
+        self._tools = build_core_tools(
             self._memory, permission=create_default_permission()
         )
         self._consolidator = MemoryConsolidator(self._provider, self._memory)
-        self._bus = bus or EventBus()
+        self._bus = bus or EventHub()
         self._presence = presence
-        self._plugin_manager: PluginManager | None = None
+        self._extension_manager: ExtensionManager | None = None
         self._stats = TurnStats()
-        self._load_plugins()
+        self._load_extensions()
         self._register_bus_handlers()
         self._refresh_system_prompt()
 
@@ -196,7 +196,7 @@ class AgentLoop:
     def _register_bus_handlers(self) -> None:
         """注册事件总线 handler。"""
 
-        async def on_turn_committed(event: TurnCommitted) -> None:
+        async def on_turn_committed(event: TurnCompleted) -> None:
             cfg = getattr(self._config, "consolidation", None)
             if cfg is not None and cfg.enabled:
                 try:
@@ -211,10 +211,10 @@ class AgentLoop:
     async def _emit_turn_committed(
         self, user_input: str, assistant_reply: str
     ) -> None:
-        """发布 TurnCommitted 事件，触发后台记忆归档等副作用。"""
+        """发布 TurnCompleted 事件，触发后台记忆归档等副作用。"""
 
         await self._bus.enqueue(
-            TurnCommitted(
+            TurnCompleted(
                 session_id=self._session_id,
                 user_input=user_input,
                 assistant_reply=assistant_reply,
@@ -308,21 +308,21 @@ class AgentLoop:
         memory_text = self._memory.read_all().strip()
         self._system_prompt = PromptBuilder(self._config.prompt).build(memory_text)
 
-    def _load_plugins(self) -> None:
+    def _load_extensions(self) -> None:
         """加载配置中指定的插件目录，注册工具。"""
-        plugins_dir = getattr(self._config, "plugins_dir", None)
-        if plugins_dir is None or not plugins_dir.exists():
+        extensions_dir = getattr(self._config, "extensions_dir", None)
+        if extensions_dir is None or not extensions_dir.exists():
             return
-        self._plugin_manager = PluginManager(plugins_dir)
-        loaded = self._plugin_manager.load_all(self._tools)
+        self._extension_manager = ExtensionManager(extensions_dir)
+        loaded = self._extension_manager.load_all(self._tools)
         if loaded:
             log.info("已加载 %d 个插件", len(loaded))
 
     async def aclose(self) -> None:
         try:
             await self._bus.drain()
-            if self._plugin_manager is not None:
-                await self._plugin_manager.unload_all()
+            if self._extension_manager is not None:
+                await self._extension_manager.unload_all()
             await self._provider.aclose()
         finally:
             self._session_store.close()

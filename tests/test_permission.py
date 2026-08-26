@@ -6,13 +6,13 @@ import asyncio
 import unittest
 from typing import Any
 
-from agent.permission import (
+from mind.permission import (
     DenyRule,
     ToolPermission,
     create_default_permission,
 )
-from agent.provider import ToolCall
-from agent.tools import Tool, ToolRegistry
+from mind.provider import ToolCall
+from mind.tools import Tool, ToolRegistry
 
 
 async def _noop(_: dict[str, Any]) -> str:

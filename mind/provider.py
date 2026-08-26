@@ -9,7 +9,7 @@ from typing import Any
 
 import httpx
 
-from agent.config import LLMConfig
+from mind.config import LLMConfig
 
 
 @dataclass

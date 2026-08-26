@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from agent.config import PromptConfig
+from mind.config import PromptConfig
 
 TOOL_GUIDE = """你可以使用工具帮助用户：
 - get_time：获取当前时间

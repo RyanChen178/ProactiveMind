@@ -7,7 +7,7 @@ from unittest.mock import MagicMock
 
 from starlette.testclient import TestClient
 
-from channels.web_chat import create_app
+from gateways.web_chat import create_app
 
 
 def _make_agent() -> MagicMock:

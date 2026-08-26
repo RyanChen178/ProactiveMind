@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import unittest
 
-from agent.stats import TurnStats, TurnRecord
+from mind.stats import TurnStats, TurnRecord
 
 
 class TurnStatsTest(unittest.TestCase):

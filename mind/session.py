@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Callable
 
-from agent.context import build_history_view
+from mind.context import build_history_view
 
 
 MessagePersister = Callable[[dict], None]

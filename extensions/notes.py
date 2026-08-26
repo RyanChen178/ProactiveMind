@@ -9,8 +9,8 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
-from agent.tools import Tool, ToolRegistry
-from plugins.manager import Plugin, PluginMeta
+from mind.tools import Tool, ToolRegistry
+from extensions.manager import Extension, ExtensionMeta
 
 _notes: list[str] = []
 
@@ -31,8 +31,8 @@ async def _tool_list_notes(_: dict[str, Any]) -> str:
     return "\n".join(f"{i+1}. {n}" for i, n in enumerate(_notes))
 
 
-class NotePlugin(Plugin):
-    meta = PluginMeta(
+class NoteExtension(Extension):
+    meta = ExtensionMeta(
         name="notes",
         description="简单笔记工具，可在对话中记录和查看笔记",
         version="0.1.0",
@@ -67,5 +67,5 @@ class NotePlugin(Plugin):
         )
 
 
-def create_plugin() -> Plugin:
-    return NotePlugin()
+def create_extension() -> Extension:
+    return NoteExtension()

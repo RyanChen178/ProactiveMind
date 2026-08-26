@@ -9,20 +9,20 @@ from datetime import datetime, timedelta, UTC
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
 
-from proactive.drift import DriftResult
-from proactive.loop import ProactiveLoop
-from proactive.presence import PresenceStore
+from initiative.drift import WanderResult
+from initiative.loop import InitiativeLoop
+from initiative.presence import PresenceStore
 
 
-class ProactiveLoopTest(unittest.IsolatedAsyncioTestCase):
+class InitiativeLoopTest(unittest.IsolatedAsyncioTestCase):
     def _make_loop(
         self, temp_dir: str, *, busy=False, max_ticks=1
-    ) -> tuple[ProactiveLoop, PresenceStore]:
+    ) -> tuple[InitiativeLoop, PresenceStore]:
         presence = PresenceStore(Path(temp_dir) / "presence.db")
         presence.record_user_message(
             datetime.now(UTC) - timedelta(hours=6)
         )
-        loop = ProactiveLoop(
+        loop = InitiativeLoop(
             presence,
             is_passive_busy=lambda: busy,
             max_ticks=max_ticks,
@@ -67,7 +67,7 @@ class ProactiveLoopTest(unittest.IsolatedAsyncioTestCase):
             pushed: list[str] = []
 
             async def fake_drift_run():
-                return DriftResult(
+                return WanderResult(
                     action="executed",
                     skill_name="audit-memory",
                     summary="发现 2 条过时记忆",
@@ -93,7 +93,7 @@ class ProactiveLoopTest(unittest.IsolatedAsyncioTestCase):
             loop, presence = self._make_loop(temp_dir)
 
             async def fake_drift_run():
-                return DriftResult(
+                return WanderResult(
                     action="executed",
                     skill_name="audit-memory",
                     summary="审计完成",

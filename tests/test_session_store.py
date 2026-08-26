@@ -7,8 +7,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from agent.session import Session
-from agent.session_store import SessionStore
+from mind.session import Session
+from mind.session_store import SessionStore
 
 
 class SessionStoreTest(unittest.TestCase):

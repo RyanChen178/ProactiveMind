@@ -28,7 +28,7 @@ class Event:
 
 
 @dataclass
-class TurnCommitted(Event):
+class TurnCompleted(Event):
     """一轮对话完成提交。"""
 
     type: str = "turn_committed"
@@ -46,7 +46,7 @@ class MemoryWritten(Event):
     fact: str = ""
 
 
-class EventBus:
+class EventHub:
     """异步事件总线。"""
 
     def __init__(self) -> None:

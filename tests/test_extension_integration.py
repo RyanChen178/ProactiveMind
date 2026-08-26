@@ -1,4 +1,4 @@
-"""插件集成到 AgentLoop 的测试。"""
+"""插件集成到 MindLoop 的测试。"""
 
 from __future__ import annotations
 
@@ -8,19 +8,19 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from agent.loop import AgentLoop
-from agent.tools import ToolRegistry
+from mind.loop import MindLoop
+from mind.tools import ToolRegistry
 
 
-_PLUGIN_CODE = '''\
-from plugins.manager import Plugin, PluginMeta
-from agent.tools import Tool, ToolRegistry
+_EXTENSION_CODE = '''\
+from extensions.manager import Extension, ExtensionMeta
+from mind.tools import Tool, ToolRegistry
 
 async def _echo(args):
     return args.get("text", "")
 
-class EchoPlugin(Plugin):
-    meta = PluginMeta(name="echo", version="0.1.0")
+class EchoExtension(Extension):
+    meta = ExtensionMeta(name="echo", version="0.1.0")
 
     def register_tools(self, registry):
         registry.register(Tool(
@@ -32,21 +32,21 @@ class EchoPlugin(Plugin):
             func=_echo,
         ))
 
-def create_plugin():
-    return EchoPlugin()
+def create_extension():
+    return EchoExtension()
 '''
 
 
 class PluginIntegrationTest(unittest.TestCase):
     def test_agent_loop_loads_plugins_from_config(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
-            plugins_dir = Path(temp_dir) / "plugins"
-            plugins_dir.mkdir()
-            (plugins_dir / "echo.py").write_text(_PLUGIN_CODE, encoding="utf-8")
+            extensions_dir = Path(temp_dir) / "plugins"
+            extensions_dir.mkdir()
+            (extensions_dir / "echo.py").write_text(_EXTENSION_CODE, encoding="utf-8")
 
             captured_tools: ToolRegistry = {}
 
-            original_init = AgentLoop.__init__
+            original_init = MindLoop.__init__
 
             def patched_init(self, config, **kwargs):
                 self._config = config
@@ -59,53 +59,53 @@ class PluginIntegrationTest(unittest.TestCase):
                 self._consolidator = None
                 self._bus = kwargs.get("bus") or None
                 self._presence = kwargs.get("presence")
-                self._plugin_manager = None
-                self._load_plugins()
+                self._extension_manager = None
+                self._load_extensions()
                 captured_tools["registry"] = self._tools
 
-            with patch.object(AgentLoop, "__init__", patched_init):
+            with patch.object(MindLoop, "__init__", patched_init):
                 config = SimpleNamespace(
-                    plugins_dir=plugins_dir,
+                    extensions_dir=extensions_dir,
                 )
-                AgentLoop(config)
+                MindLoop(config)
 
             self.assertIn("echo", captured_tools["registry"]._tools)
 
     def test_agent_loop_skips_plugins_when_dir_none(self) -> None:
         captured = {}
 
-        original_init = AgentLoop.__init__
+        original_init = MindLoop.__init__
 
         def patched_init(self, config, **kwargs):
             self._config = config
             self._tools = ToolRegistry()
-            self._plugin_manager = None
-            self._load_plugins()
-            captured["pm"] = self._plugin_manager
+            self._extension_manager = None
+            self._load_extensions()
+            captured["pm"] = self._extension_manager
 
-        with patch.object(AgentLoop, "__init__", patched_init):
-            config = SimpleNamespace(plugins_dir=None)
-            AgentLoop(config)
+        with patch.object(MindLoop, "__init__", patched_init):
+            config = SimpleNamespace(extensions_dir=None)
+            MindLoop(config)
 
         self.assertIsNone(captured["pm"])
 
     def test_agent_loop_skips_plugins_when_dir_missing(self) -> None:
         captured = {}
 
-        original_init = AgentLoop.__init__
+        original_init = MindLoop.__init__
 
         def patched_init(self, config, **kwargs):
             self._config = config
             self._tools = ToolRegistry()
-            self._plugin_manager = None
-            self._load_plugins()
-            captured["pm"] = self._plugin_manager
+            self._extension_manager = None
+            self._load_extensions()
+            captured["pm"] = self._extension_manager
 
-        with patch.object(AgentLoop, "__init__", patched_init):
+        with patch.object(MindLoop, "__init__", patched_init):
             config = SimpleNamespace(
-                plugins_dir=Path("/nonexistent/plugins"),
+                extensions_dir=Path("/nonexistent/plugins"),
             )
-            AgentLoop(config)
+            MindLoop(config)
 
         self.assertIsNone(captured["pm"])
 

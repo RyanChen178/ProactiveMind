@@ -6,7 +6,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from agent.memory import MemoryStore
+from mind.memory import MemoryStore
 
 
 class MemoryStoreTest(unittest.TestCase):
