@@ -64,6 +64,8 @@ docker compose down
 - **工具调用** —— 内置 shell、记忆检索等工具，可扩展
 - **工具权限** —— shell 命令安全审查，拦截 rm -rf、mkfs、dd 等危险操作
 - **Turn 指标** —— 记录每轮对话的 token 用量、延迟、工具调用，`/stats` 端点可查
+- **健康检查** —— `/health` 端点检查记忆、会话、心跳等核心组件状态
+- **配置校验** —— 启动时校验配置合法性，提前发现问题
 - **OpenAI 兼容** —— 支持任意 OpenAI Chat Completions 兼容端点
 
 ## 项目结构
@@ -82,6 +84,7 @@ proactivemind/
 │   ├── tools.py         # 工具注册 + 内置工具
 │   ├── permission.py    # 工具权限（shell 命令安全审查）
 │   ├── stats.py         # Turn 指标收集
+│   ├── health.py        # 健康检查
 │   ├── memory.py        # Markdown 文件记忆
 │   ├── consolidation.py # 候选长期记忆提取
 │   └── loop.py          # MindLoop ReAct 循环
@@ -113,6 +116,7 @@ proactivemind/
 │   ├── test_permission.py     # 工具权限测试
 │   ├── test_mind_loop.py      # ReAct 循环测试
 │   ├── test_stats.py          # Turn 指标测试
+│   ├── test_health.py         # 健康检查与配置校验测试
 │   ├── test_session_api.py    # 会话管理 REST API 测试
 │   └── test_session_store.py  # SQLite 会话存储测试
 └── ~/.proactivemind/

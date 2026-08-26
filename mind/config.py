@@ -111,3 +111,31 @@ def load_config(path: str = "config.toml") -> Config:
         ),
         extensions_dir=extensions_dir,
     )
+
+
+def validate_config(config: Config) -> list[str]:
+    """校验配置，返回问题列表（空列表表示无问题）。"""
+    problems: list[str] = []
+
+    if config.max_history_tokens < 100:
+        problems.append("max_history_tokens 过小（建议至少 100）")
+
+    if config.max_history_tokens > 100000:
+        problems.append("max_history_tokens 过大（建议不超过 100000）")
+
+    if config.llm.max_tokens < 100:
+        problems.append("llm.max_tokens 过小（建议至少 100）")
+
+    if not config.llm.api_key:
+        problems.append("llm.api_key 为空")
+
+    if not config.llm.base_url:
+        problems.append("llm.base_url 为空")
+
+    if not config.llm.model:
+        problems.append("llm.model 为空")
+
+    if config.extensions_dir is not None and not config.extensions_dir.exists():
+        problems.append(f"extensions_dir 不存在: {config.extensions_dir}")
+
+    return problems

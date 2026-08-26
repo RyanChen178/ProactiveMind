@@ -94,14 +94,21 @@ async def web_server() -> None:
     import uvicorn
 
     from gateways.web_chat import SocketHub, create_app
+    from mind.health import create_health_checker
 
     agent, bus, presence, proactive_loop = _build_agent()
 
     cm = SocketHub()
     proactive_loop._push_callback = cm.broadcast
 
+    hc = create_health_checker(
+        memory_store=agent._memory,
+        session_store=agent._session_store,
+        presence_store=presence,
+    )
+
     proactive_task = asyncio.create_task(proactive_loop.run())
-    app = create_app(agent, cm)
+    app = create_app(agent, cm, health_checker=hc)
 
     config = uvicorn.Config(app, host="127.0.0.1", port=6322, log_level="info")
     server = uvicorn.Server(config)

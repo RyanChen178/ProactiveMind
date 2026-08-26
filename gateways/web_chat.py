@@ -131,15 +131,28 @@ ws.onopen = () => { addMsg("agent", "ProactiveMind 已连接，输入消息开�
 def create_app(
     agent: MindLoop,
     connection_manager: SocketHub | None = None,
+    health_checker=None,
 ) -> FastAPI:
     """创建 Web Chat FastAPI 应用。"""
 
     app = FastAPI(title="ProactiveMind Web Chat")
     cm = connection_manager or SocketHub()
+    hc = health_checker
 
     @app.get("/")
     async def index() -> HTMLResponse:
         return HTMLResponse(HTML_PAGE)
+
+    @app.get("/health")
+    async def health() -> dict:
+        if hc is None:
+            return {"status": "healthy", "detail": "健康检查未配置"}
+        report = hc.check()
+        result = hc.to_dict(report)
+        if report.status == "unhealthy":
+            from fastapi.responses import JSONResponse
+            return JSONResponse(status_code=503, content=result)
+        return result
 
     @app.get("/stats")
     async def stats() -> dict:
