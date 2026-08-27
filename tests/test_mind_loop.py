@@ -95,6 +95,7 @@ def build_loop(
     loop._bus.start()
     loop._presence = None
     loop._extension_manager = None
+    loop._vector_store = __import__("mind.vector_store", fromlist=["VectorStore"]).VectorStore()
     loop._stats = __import__("mind.stats", fromlist=["TurnStats"]).TurnStats()
     loop._register_bus_handlers()
     return loop, provider, tools
@@ -106,6 +107,7 @@ class MindLoopTest(unittest.IsolatedAsyncioTestCase):
             loop = MindLoop.__new__(MindLoop)
             loop._config = SimpleNamespace(prompt=PromptConfig())
             loop._memory = MemoryStore(Path(temp_dir))
+            loop._vector_store = __import__("mind.vector_store", fromlist=["VectorStore"]).VectorStore()
             loop._memory.append_pending(["用户长期维护 ProactiveMind 项目"])
 
             facts = loop.promote_pending_memories()

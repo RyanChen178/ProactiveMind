@@ -9,6 +9,7 @@ from typing import Any, Callable, Awaitable
 
 from mind.provider import ToolCall
 from mind.permission import ToolPermission, create_default_permission
+from mind.vector_store import VectorStore
 
 
 # 工具执行函数的类型：接收 dict 参数，返回 str
@@ -115,11 +116,22 @@ def _create_memory_func(memory_store):
     return _tool_memorize
 
 
-def _create_recall_func(memory_store):
+def _create_recall_func(memory_store, vector_store: VectorStore | None = None):
     """创建 recall 工具函数。"""
 
     async def _tool_recall(args: dict[str, Any]) -> str:
         keyword = args.get("keyword", "").strip()
+        if not keyword:
+            return "错误：缺少 keyword 参数"
+
+        # 优先使用向量语义搜索
+        if vector_store is not None and vector_store.size > 0:
+            results = vector_store.search(keyword, top_k=5)
+            if results:
+                lines = [f"- {text} (相关度: {score:.2f})" for text, score in results]
+                return "\n".join(lines)
+
+        # 回退到关键词匹配
         results = memory_store.search(keyword)
         if not results:
             return "没有找到相关记忆"
@@ -131,6 +143,7 @@ def _create_recall_func(memory_store):
 def build_core_tools(
     memory_store,
     permission: ToolPermission | None = None,
+    vector_store: VectorStore | None = None,
 ) -> ToolRegistry:
     """构建默认工具集。"""
     registry = ToolRegistry(permission=permission)
@@ -194,7 +207,7 @@ def build_core_tools(
                 },
                 "required": ["keyword"],
             },
-            func=_create_recall_func(memory_store),
+            func=_create_recall_func(memory_store, vector_store),
         )
     )
 

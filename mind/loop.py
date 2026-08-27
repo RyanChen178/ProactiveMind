@@ -17,6 +17,7 @@ from mind.session_store import SessionStore
 from mind.stats import TurnStats
 from mind.tools import ToolRegistry, build_core_tools
 from mind.permission import create_default_permission
+from mind.vector_store import VectorStore
 from events import EventHub, TurnCompleted
 from initiative.presence import PresenceStore
 from extensions.manager import ExtensionManager
@@ -47,8 +48,12 @@ class MindLoop:
         self._session_store = SessionStore(config.workspace / "sessions.db")
         self._session_id = self._session_store.get_or_create_active_session()
         self._session = self._load_session(self._session_id)
+        self._vector_store = VectorStore()
+        self._refresh_vector_store()
         self._tools = build_core_tools(
-            self._memory, permission=create_default_permission()
+            self._memory,
+            permission=create_default_permission(),
+            vector_store=self._vector_store,
         )
         self._consolidator = MemoryConsolidator(self._provider, self._memory)
         self._bus = bus or EventHub()
@@ -307,6 +312,18 @@ class MindLoop:
 
         memory_text = self._memory.read_all().strip()
         self._system_prompt = PromptBuilder(self._config.prompt).build(memory_text)
+        self._refresh_vector_store()
+
+    def _refresh_vector_store(self) -> None:
+        """用当前长期记忆重建向量索引。"""
+        all_text = self._memory.read_all().strip()
+        facts = [
+            line.lstrip("- ").strip()
+            for line in all_text.splitlines()
+            if line.strip().startswith("- ")
+        ]
+        if facts:
+            self._vector_store.rebuild(facts)
 
     def _load_extensions(self) -> None:
         """加载配置中指定的插件目录，注册工具。"""

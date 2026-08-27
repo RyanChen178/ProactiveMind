@@ -54,6 +54,7 @@ docker compose down
 - **流式输出** —— CLI 实时显示模型生成的回复
 - **分层提示词** —— 人格、行为规则、工具说明与长期记忆按区块组装
 - **持久记忆** —— 对话中保存的事实写入 `MEMORY.md`，跨会话保留
+- **语义检索** —— TF-IDF + 余弦相似度的向量记忆搜索，recall 工具优先语义匹配
 - **自动记忆归档** —— 对话结束后后台提取候选事实，先写入 `PENDING.md`
 - **记忆人工提升** —— 使用 `/pending` 查看候选事实，`/promote` 显式追加到长期记忆
 - **事件枢纽** —— emit/fanout/enqueue 三种语义，对话完成事件驱动后台归档
@@ -85,6 +86,7 @@ proactivemind/
 │   ├── permission.py    # 工具权限（shell 命令安全审查）
 │   ├── stats.py         # Turn 指标收集
 │   ├── health.py        # 健康检查
+│   ├── vector_store.py  # 向量记忆检索（TF-IDF + 余弦相似度）
 │   ├── memory.py        # Markdown 文件记忆
 │   ├── consolidation.py # 候选长期记忆提取
 │   └── loop.py          # MindLoop ReAct 循环
@@ -117,6 +119,7 @@ proactivemind/
 │   ├── test_mind_loop.py      # ReAct 循环测试
 │   ├── test_stats.py          # Turn 指标测试
 │   ├── test_health.py         # 健康检查与配置校验测试
+│   ├── test_vector_store.py   # 向量记忆检索测试
 │   ├── test_session_api.py    # 会话管理 REST API 测试
 │   └── test_session_store.py  # SQLite 会话存储测试
 └── ~/.proactivemind/
