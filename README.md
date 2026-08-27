@@ -31,6 +31,8 @@ python app.py web
 python -m unittest discover -s tests -v
 ```
 
+CI 会自动在 Python 3.12 / 3.13 上运行测试和 lint。
+
 ## Docker 部署
 
 ```bash
