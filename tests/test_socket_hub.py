@@ -56,6 +56,28 @@ class SocketHubTest(unittest.IsolatedAsyncioTestCase):
         cm.disconnect(ws)
         self.assertEqual(cm.count, 0)
 
+    async def test_broadcast_json_sends_custom_payload(self) -> None:
+        cm = SocketHub()
+        ws = AsyncMock()
+        cm._connections = [ws]
+
+        await cm.broadcast_json({"type": "session_changed", "session_id": "s1"})
+
+        expected = json.dumps({"type": "session_changed", "session_id": "s1"})
+        ws.send_text.assert_awaited_once_with(expected)
+
+    async def test_broadcast_json_removes_dead(self) -> None:
+        cm = SocketHub()
+        ws_alive = AsyncMock()
+        ws_dead = AsyncMock()
+        ws_dead.send_text.side_effect = RuntimeError("gone")
+        cm._connections = [ws_alive, ws_dead]
+
+        await cm.broadcast_json({"type": "test"})
+
+        self.assertEqual(cm.count, 1)
+        self.assertIn(ws_alive, cm._connections)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -34,7 +34,11 @@ class SocketHub:
 
     async def broadcast(self, content: str) -> None:
         """向所有连接的客户端推送主动消息。"""
-        message = json.dumps({"type": "proactive", "content": content})
+        await self.broadcast_json({"type": "proactive", "content": content})
+
+    async def broadcast_json(self, data: dict) -> None:
+        """向所有连接的客户端推送 JSON 消息。"""
+        message = json.dumps(data)
         dead: list[WebSocket] = []
         for ws in self._connections:
             try:
@@ -62,6 +66,10 @@ HTML_PAGE = """<!DOCTYPE html>
   .msg { margin: 8px 0; padding: 10px 14px; border-radius: 12px; max-width: 80%; white-space: pre-wrap; word-break: break-word; }
   .user { background: #1a3a5c; margin-left: auto; }
   .agent { background: #1e1e1e; }
+  .system { background: #1a1a0f; border: 1px solid #3a3a1a; font-size: 0.85em; color: #aaa; }
+  #status { padding: 4px 8px; font-size: 0.8em; color: #666; }
+  #status.connected { color: #4a9; }
+  #status.reconnecting { color: #e94; }
   #input-bar { display: flex; gap: 8px; padding: 8px 0; }
   #input { flex: 1; background: #1e1e1e; border: 1px solid #333; color: #e0e0e0; border-radius: 8px; padding: 10px 14px; font-size: 14px; }
   #input:focus { outline: none; border-color: #3a6ea5; }
@@ -72,17 +80,81 @@ HTML_PAGE = """<!DOCTYPE html>
 </head>
 <body>
 <div id="chat">
+  <div id="status" class="reconnecting">连接中...</div>
   <div id="messages"></div>
   <div id="input-bar">
     <input id="input" placeholder="输入消息..." autocomplete="off">
-    <button id="send">发送</button>
+    <button id="send" disabled>发送</button>
   </div>
 </div>
 <script>
-const ws = new WebSocket("ws://" + location.host + "/ws");
 const messages = document.getElementById("messages");
 const input = document.getElementById("input");
 const sendBtn = document.getElementById("send");
+const statusEl = document.getElementById("status");
+
+let ws = null;
+let reconnectDelay = 1000;
+let reconnectTimer = null;
+
+function setStatus(text, cls) {
+  statusEl.textContent = text;
+  statusEl.className = cls;
+}
+
+function connect() {
+  ws = new WebSocket("ws://" + location.host + "/ws");
+
+  ws.onopen = () => {
+    setStatus("已连接", "connected");
+    sendBtn.disabled = false;
+    input.focus();
+    reconnectDelay = 1000;
+  };
+
+  ws.onclose = () => {
+    setStatus("连接断开，" + Math.round(reconnectDelay / 1000) + "s 后重连...", "reconnecting");
+    sendBtn.disabled = true;
+    if (reconnectTimer) clearTimeout(reconnectTimer);
+    reconnectTimer = setTimeout(connect, reconnectDelay);
+    reconnectDelay = Math.min(reconnectDelay * 1.5, 30000);
+  };
+
+  ws.onerror = () => {
+    setStatus("连接错误", "reconnecting");
+  };
+
+  ws.onmessage = (event) => {
+    const data = JSON.parse(event.data);
+    if (data.type === "delta") {
+      const agentDiv = getOrCreateAgentDiv();
+      agentDiv.textContent += data.content;
+      messages.scrollTop = messages.scrollHeight;
+    } else if (data.type === "done") {
+      sendBtn.disabled = false;
+      input.focus();
+    } else if (data.type === "proactive") {
+      addMsg("agent", data.content);
+    } else if (data.type === "session_changed") {
+      addMsg("system", "已切换到会话: " + data.session_id);
+    } else if (data.type === "session_reset") {
+      addMsg("system", "已新建会话: " + data.session_id);
+    }
+  };
+}
+
+let currentAgentDiv = null;
+
+function getOrCreateAgentDiv() {
+  if (!currentAgentDiv || currentAgentDiv.dataset.done === "true") {
+    currentAgentDiv = document.createElement("div");
+    currentAgentDiv.className = "msg agent";
+    currentAgentDiv.dataset.done = "false";
+    messages.appendChild(currentAgentDiv);
+    messages.scrollTop = messages.scrollHeight;
+  }
+  return currentAgentDiv;
+}
 
 function addMsg(role, text) {
   const div = document.createElement("div");
@@ -92,29 +164,31 @@ function addMsg(role, text) {
   messages.scrollTop = messages.scrollHeight;
 }
 
-sendBtn.onclick = async () => {
+sendBtn.onclick = () => {
   const text = input.value.trim();
-  if (!text) return;
+  if (!text || !ws || ws.readyState !== WebSocket.OPEN) return;
   input.value = "";
   sendBtn.disabled = true;
   addMsg("user", text);
+  currentAgentDiv = null;
   ws.send(JSON.stringify({type: "message", content: text}));
 
-  const agentDiv = document.createElement("div");
-  agentDiv.className = "msg agent";
-  messages.appendChild(agentDiv);
-  messages.scrollTop = messages.scrollHeight;
-
+  const agentDiv = getOrCreateAgentDiv();
   ws.onmessage = (event) => {
     const data = JSON.parse(event.data);
     if (data.type === "delta") {
       agentDiv.textContent += data.content;
       messages.scrollTop = messages.scrollHeight;
     } else if (data.type === "done") {
+      agentDiv.dataset.done = "true";
       sendBtn.disabled = false;
       input.focus();
     } else if (data.type === "proactive") {
       addMsg("agent", data.content);
+    } else if (data.type === "session_changed") {
+      addMsg("system", "已切换到会话: " + data.session_id);
+    } else if (data.type === "session_reset") {
+      addMsg("system", "已新建会话: " + data.session_id);
     }
   };
 };
@@ -122,7 +196,8 @@ sendBtn.onclick = async () => {
 input.addEventListener("keydown", (e) => {
   if (e.key === "Enter" && !sendBtn.disabled) sendBtn.onclick();
 });
-ws.onopen = () => { addMsg("agent", "ProactiveMind 已连接，输入消息开始对话。"); input.focus(); };
+
+connect();
 </script>
 </body>
 </html>"""
@@ -186,11 +261,13 @@ def create_app(
         ok = agent.switch_session(session_id)
         if not ok:
             return {"error": "会话不存在"}
+        await cm.broadcast_json({"type": "session_changed", "session_id": session_id})
         return {"ok": True, "session_id": session_id}
 
     @app.post("/sessions/reset")
     async def reset_session() -> dict:
         agent.reset_session()
+        await cm.broadcast_json({"type": "session_reset", "session_id": agent._session_id})
         return {"ok": True, "session_id": agent._session_id}
 
     @app.get("/sessions/{session_id}/export")
