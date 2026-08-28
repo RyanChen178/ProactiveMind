@@ -43,7 +43,7 @@ class MindLoop:
         presence: PresenceStore | None = None,
     ) -> None:
         self._config = config
-        self._provider = LLMProvider(config.llm)
+        self._provider = LLMProvider.from_config(config)
         self._memory = MemoryStore(config.workspace)
         self._session_store = SessionStore(config.workspace / "sessions.db")
         self._session_id = self._session_store.get_or_create_active_session()

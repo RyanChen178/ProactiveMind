@@ -1,4 +1,4 @@
-"""LLM Provider —— OpenAI Chat Completions 兼容调用。"""
+"""LLM Provider —— OpenAI Chat Completions 兼容调用，支持多运行时切换。"""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ from typing import Any
 
 import httpx
 
-from mind.config import LLMConfig
+from mind.runtime import RuntimeConfig
 
 
 @dataclass
@@ -28,6 +28,7 @@ class LLMResponse:
     content: str
     tool_calls: list[ToolCall] = field(default_factory=list)
     usage: dict[str, int] = field(default_factory=dict)
+    model: str = ""
 
 
 @dataclass
@@ -39,15 +40,49 @@ class StreamEvent:
 
 
 class LLMProvider:
-    """OpenAI Chat Completions 兼容的 LLM 调用客户端。"""
+    """OpenAI Chat Completions 兼容的 LLM 调用客户端，支持多运行时。"""
 
-    def __init__(self, config: LLMConfig) -> None:
-        self._config = config
+    def __init__(self, runtime: RuntimeConfig) -> None:
+        self._runtime = runtime
         self._client = httpx.AsyncClient(
-            base_url=config.base_url,
-            headers={"Authorization": f"Bearer {config.api_key}"},
+            base_url=runtime.base_url,
+            headers={"Authorization": f"Bearer {runtime.api_key}"},
             timeout=httpx.Timeout(60.0, connect=10.0),
         )
+
+    @classmethod
+    def from_config(cls, config: Any) -> "LLMProvider":
+        """从 Config 对象创建主运行时的 Provider。"""
+        main_runtime = config.runtimes.get_main()
+        return cls(main_runtime)
+
+    @classmethod
+    def for_fast(cls, config: Any) -> "LLMProvider | None":
+        """创建快速运行时的 Provider（用于轻量任务）。"""
+        fast_runtime = config.runtimes.get_fast()
+        if not fast_runtime:
+            return None
+        return cls(fast_runtime)
+
+    @classmethod
+    def for_vl(cls, config: Any) -> "LLMProvider | None":
+        """创建视觉运行时的 Provider（用于图像理解）。"""
+        vl_runtime = config.runtimes.get_vl()
+        if not vl_runtime:
+            return None
+        return cls(vl_runtime)
+
+    @property
+    def runtime_id(self) -> str:
+        return self._runtime.runtime_id
+
+    @property
+    def model(self) -> str:
+        return self._runtime.model
+
+    @property
+    def context_window(self) -> int:
+        return self._runtime.context_window
 
     async def chat(
         self,
@@ -58,12 +93,17 @@ class LLMProvider:
         """调用 chat completions 接口。"""
 
         payload: dict[str, Any] = {
-            "model": self._config.model,
+            "model": self._runtime.model,
             "messages": messages,
-            "max_tokens": max_tokens or self._config.max_tokens,
+            "max_tokens": max_tokens or self._runtime.max_output_tokens or 4096,
         }
         if tools:
             payload["tools"] = tools
+
+        if self._runtime.enable_thinking:
+            payload["enable_thinking"] = True
+            if self._runtime.reasoning_effort:
+                payload["reasoning_effort"] = self._runtime.reasoning_effort
 
         resp = await self._client.post("/chat/completions", json=payload)
         resp.raise_for_status()
@@ -84,7 +124,9 @@ class LLMProvider:
             )
 
         usage = data.get("usage", {})
-        return LLMResponse(content=content, tool_calls=tool_calls, usage=usage)
+        return LLMResponse(
+            content=content, tool_calls=tool_calls, usage=usage, model=self._runtime.model
+        )
 
     async def chat_stream(
         self,
@@ -94,13 +136,18 @@ class LLMProvider:
         """调用 SSE 流式接口，并在结束时给出完整响应。"""
 
         payload: dict[str, Any] = {
-            "model": self._config.model,
+            "model": self._runtime.model,
             "messages": messages,
-            "max_tokens": self._config.max_tokens,
+            "max_tokens": self._runtime.max_output_tokens or 4096,
             "stream": True,
         }
         if tools:
             payload["tools"] = tools
+
+        if self._runtime.enable_thinking:
+            payload["enable_thinking"] = True
+            if self._runtime.reasoning_effort:
+                payload["reasoning_effort"] = self._runtime.reasoning_effort
 
         content_parts: list[str] = []
         tool_calls: dict[int, dict[str, str]] = {}
@@ -136,6 +183,7 @@ class LLMProvider:
                 content="".join(content_parts),
                 tool_calls=self._parse_stream_tool_calls(tool_calls),
                 usage=usage,
+                model=self._runtime.model,
             )
         )
 
