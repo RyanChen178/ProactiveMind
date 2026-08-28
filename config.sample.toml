@@ -1,26 +1,82 @@
 # ProactiveMind 配置文件
 # 复制为 config.toml 后填入你的 API 信息
 
+# =============================================================================
+# 必填：LLM 运行时配置
+# 支持多个命名运行时，通过 main/fast/vl 指针切换用途
+# api_key 可以直接填字符串，也可以用 ${ENV_VAR} 引用环境变量
+# =============================================================================
+
 [llm]
+# 主运行时——用于对话和推理（必填）
+main = "deepseek_main"
+# 快速运行时——用于轻量任务如 memory gate / query rewrite（可选）
+fast = "qwen_fast"
+# 视觉运行时——用于图像理解（可选，仅在主运行时不支持图片时需要）
+vl = ""
+
+[llm.runtimes.deepseek_main]
+# 主模型，推荐 deepseek-v4-flash（agent 能力强、价格低）
+provider = "deepseek"
+model = "deepseek-v4-flash"
 api_key = "${DEEPSEEK_API_KEY}"
 base_url = "https://api.deepseek.com/v1"
-model = "deepseek-chat"
-max_tokens = 4096
+context_window = 128000
+max_output_tokens = 0
+input_modalities = ["text"]
+# 可选：启用思考模式
+enable_thinking = false
+reasoning_effort = ""
+
+[llm.runtimes.qwen_fast]
+# 轻量模型，用于 memory gate / query rewrite / HyDE
+provider = "qwen"
+model = "qwen-flash"
+api_key = "${QWEN_API_KEY}"
+base_url = "https://dashscope.aliyuncs.com/compatible-mode/v1"
+context_window = 128000
+max_output_tokens = 0
+input_modalities = ["text"]
+
+# =============================================================================
+# 工作区
+# =============================================================================
 
 [workspace]
 path = "~/.proactivemind/workspace"
+
+# =============================================================================
+# 上下文管理
+# =============================================================================
 
 [context]
 # 发送给模型的历史消息预算，按字符近似估算 token
 max_history_tokens = 6000
 
+[context.compaction]
+# 上下文压缩：当历史消息达到阈值时自动压缩旧会话
+# 保留最近 keep_recent_tokens 个 token 的完整历史
+keep_recent_tokens = 20000
+
+# =============================================================================
+# 记忆系统
+# =============================================================================
+
 [consolidation]
 # 每轮回复完成后，后台提取候选长期事实并写入 PENDING.md
 enabled = true
 
+# =============================================================================
+# 扩展系统
+# =============================================================================
+
 [extensions]
 # 扩展目录路径，留空则不加载扩展
 dir = "extensions"
+
+# =============================================================================
+# 提示词
+# =============================================================================
 
 [prompt]
 persona = "你是 ProactiveMind，一个有持久记忆的 AI 助手。"
