@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import tempfile
 import unittest
-from datetime import datetime, timedelta, UTC
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
 
@@ -20,7 +20,7 @@ class InitiativeLoopTest(unittest.IsolatedAsyncioTestCase):
     ) -> tuple[InitiativeLoop, PresenceStore]:
         presence = PresenceStore(Path(temp_dir) / "presence.db")
         presence.record_user_message(
-            datetime.now(UTC) - timedelta(hours=6)
+            datetime.now(timezone.utc) - timedelta(hours=6)
         )
         loop = InitiativeLoop(
             presence,
@@ -42,7 +42,7 @@ class InitiativeLoopTest(unittest.IsolatedAsyncioTestCase):
     async def test_skips_during_cooldown(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             loop, presence = self._make_loop(temp_dir)
-            presence.record_proactive(datetime.now(UTC))
+            presence.record_proactive(datetime.now(timezone.utc))
 
             result = await loop._tick()
             presence.close()
@@ -134,7 +134,7 @@ class PresenceStoreTest(unittest.TestCase):
     def test_records_and_reads_user_message_time(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             store = PresenceStore(Path(temp_dir) / "presence.db")
-            ts = datetime(2026, 8, 19, 14, 30, 0, tzinfo=UTC)
+            ts = datetime(2026, 8, 19, 14, 30, 0, tzinfo=timezone.utc)
             store.record_user_message(ts)
 
             result = store.get_last_user_at()
@@ -151,7 +151,7 @@ class PresenceStoreTest(unittest.TestCase):
     def test_records_and_reads_proactive_time(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             store = PresenceStore(Path(temp_dir) / "presence.db")
-            ts = datetime(2026, 8, 19, 14, 30, 0, tzinfo=UTC)
+            ts = datetime(2026, 8, 19, 14, 30, 0, tzinfo=timezone.utc)
             store.record_proactive(ts)
 
             self.assertEqual(store.get_last_proactive_at(), ts)

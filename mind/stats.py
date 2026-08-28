@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass, field
-from datetime import datetime, UTC
+from datetime import datetime, timezone
 
 
 @dataclass
@@ -62,7 +62,7 @@ class TurnStats:
             prompt_tokens=(usage or {}).get("prompt_tokens", 0),
             completion_tokens=(usage or {}).get("completion_tokens", 0),
             latency_ms=latency_ms,
-            timestamp=datetime.now(UTC).isoformat(),
+            timestamp=datetime.now(timezone.utc).isoformat(),
         )
         self._records.append(record)
         if len(self._records) > self._max_records:

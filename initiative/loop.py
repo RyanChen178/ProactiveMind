@@ -11,7 +11,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from dataclasses import dataclass
-from datetime import datetime, UTC
+from datetime import datetime, timezone
 from typing import Awaitable, Callable
 
 from initiative.drift import WanderLoop
@@ -82,7 +82,7 @@ class InitiativeLoop:
     async def _tick(self) -> TickResult:
         """执行一轮主动推送检查。"""
         tick_id = f"tick-{self._tick_count}"
-        now = datetime.now(UTC)
+        now = datetime.now(timezone.utc)
         last_user_at = self._presence.get_last_user_at()
         assert last_user_at is not None
 

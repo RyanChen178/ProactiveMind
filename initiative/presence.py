@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
-from datetime import datetime, UTC
+from datetime import datetime, timezone
 
 
 class PresenceStore:
@@ -25,7 +25,7 @@ class PresenceStore:
 
     def record_user_message(self, now: datetime | None = None) -> None:
         """用户发消息时更新心跳。"""
-        ts = (now or datetime.now(UTC)).isoformat()
+        ts = (now or datetime.now(timezone.utc)).isoformat()
         self._conn.execute(
             "INSERT INTO presence (key, last_user_at) VALUES ('default', ?) "
             "ON CONFLICT(key) DO UPDATE SET last_user_at = excluded.last_user_at",
@@ -35,7 +35,7 @@ class PresenceStore:
 
     def record_proactive(self, now: datetime | None = None) -> None:
         """主动推送发送后记录时间。"""
-        ts = (now or datetime.now(UTC)).isoformat()
+        ts = (now or datetime.now(timezone.utc)).isoformat()
         self._conn.execute(
             "INSERT INTO presence (key, last_proactive_at) VALUES ('default', ?) "
             "ON CONFLICT(key) DO UPDATE SET last_proactive_at = excluded.last_proactive_at",

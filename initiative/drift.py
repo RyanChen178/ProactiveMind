@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from datetime import datetime, UTC
+from datetime import datetime, timezone
 from pathlib import Path
 
 from mind.provider import LLMProvider
@@ -149,4 +149,4 @@ def _extract_first_heading(markdown: str) -> str:
 
 
 def _now_iso() -> str:
-    return datetime.now(UTC).isoformat()
+    return datetime.now(timezone.utc).isoformat()

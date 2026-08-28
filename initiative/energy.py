@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import math
 import random
-from datetime import datetime, timedelta, UTC
+from datetime import datetime, timedelta, timezone
 
 
 def compute_energy(
@@ -22,13 +22,13 @@ def compute_energy(
     """
 
     if now is None:
-        now = datetime.now(UTC)
+        now = datetime.now(timezone.utc)
 
     # 统一处理 aware/naive datetime
     if last_user_at.tzinfo is None:
-        last_user_at = last_user_at.replace(tzinfo=UTC)
+        last_user_at = last_user_at.replace(tzinfo=timezone.utc)
     if now.tzinfo is None:
-        now = now.replace(tzinfo=UTC)
+        now = now.replace(tzinfo=timezone.utc)
 
     elapsed = (now - last_user_at).total_seconds()
     if elapsed < 0:

@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import sqlite3
 import uuid
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -74,7 +74,7 @@ class SessionStore:
         """创建并切换到新的活动会话。"""
 
         session_id = uuid.uuid4().hex
-        created_at = datetime.now(UTC).isoformat()
+        created_at = datetime.now(timezone.utc).isoformat()
         with self._connection:
             self._connection.execute(
                 "INSERT INTO sessions (id, created_at) VALUES (?, ?)",
@@ -132,7 +132,7 @@ class SessionStore:
                     content,
                     tool_call_id,
                     tool_calls_json,
-                    datetime.now(UTC).isoformat(),
+                    datetime.now(timezone.utc).isoformat(),
                 ),
             )
 

@@ -105,16 +105,20 @@ class HealthCheckerTest(unittest.TestCase):
 
 class ConfigValidationTest(unittest.TestCase):
     def test_valid_config_has_no_problems(self) -> None:
-        from mind.config import Config, LLMConfig, PromptConfig, ConsolidationConfig, validate_config
+        from mind.config import Config, PromptConfig, ConsolidationConfig, validate_config
+        from mind.runtime import RuntimeConfig, RuntimeRegistry
         from pathlib import Path
 
+        runtime = RuntimeConfig(
+            runtime_id="test",
+            provider="deepseek",
+            model="test-model",
+            api_key="test",
+            base_url="https://api.test.com/v1",
+        )
+        registry = RuntimeRegistry(runtimes={"test": runtime}, main="test")
         config = Config(
-            llm=LLMConfig(
-                api_key="test",
-                base_url="https://api.test.com/v1",
-                model="test-model",
-                max_tokens=4096,
-            ),
+            runtimes=registry,
             workspace=Path("/tmp"),
             max_history_tokens=6000,
             prompt=PromptConfig(),
@@ -124,22 +128,37 @@ class ConfigValidationTest(unittest.TestCase):
         self.assertEqual(problems, [])
 
     def test_empty_api_key_flagged(self) -> None:
-        from mind.config import Config, LLMConfig, PromptConfig, ConsolidationConfig, validate_config
+        from mind.config import Config, validate_config
+        from mind.runtime import RuntimeConfig, RuntimeRegistry
         from pathlib import Path
 
-        config = Config(
-            llm=LLMConfig(api_key="", base_url="https://api.test.com/v1", model="test"),
-            workspace=Path("/tmp"),
+        runtime = RuntimeConfig(
+            runtime_id="test",
+            provider="deepseek",
+            model="test",
+            api_key="",
+            base_url="https://api.test.com/v1",
         )
+        registry = RuntimeRegistry(runtimes={"test": runtime}, main="test")
+        config = Config(runtimes=registry, workspace=Path("/tmp"))
         problems = validate_config(config)
         self.assertTrue(any("api_key" in p for p in problems))
 
     def test_small_max_history_tokens_flagged(self) -> None:
-        from mind.config import Config, LLMConfig, validate_config
+        from mind.config import Config, validate_config
+        from mind.runtime import RuntimeConfig, RuntimeRegistry
         from pathlib import Path
 
+        runtime = RuntimeConfig(
+            runtime_id="test",
+            provider="deepseek",
+            model="m",
+            api_key="k",
+            base_url="url",
+        )
+        registry = RuntimeRegistry(runtimes={"test": runtime}, main="test")
         config = Config(
-            llm=LLMConfig(api_key="k", base_url="url", model="m"),
+            runtimes=registry,
             workspace=Path("/tmp"),
             max_history_tokens=50,
         )
@@ -147,11 +166,20 @@ class ConfigValidationTest(unittest.TestCase):
         self.assertTrue(any("max_history_tokens" in p for p in problems))
 
     def test_nonexistent_extensions_dir_flagged(self) -> None:
-        from mind.config import Config, LLMConfig, validate_config
+        from mind.config import Config, validate_config
+        from mind.runtime import RuntimeConfig, RuntimeRegistry
         from pathlib import Path
 
+        runtime = RuntimeConfig(
+            runtime_id="test",
+            provider="deepseek",
+            model="m",
+            api_key="k",
+            base_url="url",
+        )
+        registry = RuntimeRegistry(runtimes={"test": runtime}, main="test")
         config = Config(
-            llm=LLMConfig(api_key="k", base_url="url", model="m"),
+            runtimes=registry,
             workspace=Path("/tmp"),
             extensions_dir=Path("/nonexistent/ext"),
         )
