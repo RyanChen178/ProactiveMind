@@ -19,6 +19,7 @@ from mind.tools import ToolRegistry, build_core_tools
 from mind.permission import create_default_permission
 from mind.vector_store import VectorStore
 from mind.compaction import ContextCompactor
+from mind.lightweight_assistant import LightweightModelAssistant
 from events import EventHub, TurnCompleted
 from initiative.presence import PresenceStore
 from extensions.manager import ExtensionManager
@@ -56,7 +57,12 @@ class MindLoop:
             permission=create_default_permission(),
             vector_store=self._vector_store,
         )
-        self._consolidator = MemoryConsolidator(self._provider, self._memory)
+        # 初始化轻量模型辅助器
+        fast_provider = LLMProvider.for_fast(config)
+        self._lightweight_assistant = LightweightModelAssistant(fast_provider)
+        self._consolidator = MemoryConsolidator(
+            self._provider, self._memory, self._lightweight_assistant
+        )
         # 初始化上下文压缩器
         context_window = getattr(self._config.llm, 'context_window', 128000)
         context_compaction = getattr(self._config, "context_compaction", None)
