@@ -18,6 +18,7 @@ from mind.stats import TurnStats
 from mind.tools import ToolRegistry, build_core_tools
 from mind.permission import create_default_permission
 from mind.vector_store import VectorStore
+from mind.compaction import ContextCompactor
 from events import EventHub, TurnCompleted
 from initiative.presence import PresenceStore
 from extensions.manager import ExtensionManager
@@ -56,6 +57,15 @@ class MindLoop:
             vector_store=self._vector_store,
         )
         self._consolidator = MemoryConsolidator(self._provider, self._memory)
+        # 初始化上下文压缩器
+        context_window = getattr(self._config.llm, 'context_window', 128000)
+        context_compaction = getattr(self._config, "context_compaction", None)
+        keep_recent = getattr(context_compaction, "keep_recent_tokens", 20000) if context_compaction else 20000
+        self._compactor = ContextCompactor(
+            provider=self._provider,
+            context_window=context_window,
+            keep_recent_tokens=keep_recent,
+        )
         self._bus = bus or EventHub()
         self._presence = presence
         self._extension_manager: ExtensionManager | None = None
@@ -196,7 +206,23 @@ class MindLoop:
         messages.extend(
             self._session.get_history(self._config.max_history_tokens)
         )
+        
+        # 检查是否需要上下文压缩
+        if self._compactor.should_compact(messages):
+            log.info("触发上下文压缩")
+            try:
+                messages, checkpoint = self._compactor.compact(messages)
+                log.info(
+                    "压缩完成: generation=%d, tokens=%d→%d",
+                    checkpoint.generation,
+                    checkpoint.estimated_tokens_before,
+                    checkpoint.estimated_tokens_after,
+                )
+            except Exception as exc:
+                log.warning("上下文压缩失败: %s", exc)
+        
         return messages
+
 
     def _register_bus_handlers(self) -> None:
         """注册事件总线 handler。"""

@@ -97,6 +97,7 @@ def build_loop(
     loop._extension_manager = None
     loop._vector_store = __import__("mind.vector_store", fromlist=["VectorStore"]).VectorStore()
     loop._stats = __import__("mind.stats", fromlist=["TurnStats"]).TurnStats()
+    loop._compactor = __import__("mind.compaction", fromlist=["ContextCompactor"]).ContextCompactor(provider=provider, context_window=128000, keep_recent_tokens=20000)
     loop._register_bus_handlers()
     return loop, provider, tools
 
