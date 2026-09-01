@@ -10,7 +10,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 from mind.context import estimate_message_tokens, build_history_view
-from mind.provider import LLMProvider
+from mind.provider import LLMProvider, ContextLengthError
 
 logger = logging.getLogger(__name__)
 
@@ -200,6 +200,12 @@ class ContextCompactor:
                 max_tokens=SUMMARY_MAX_TOKENS,
             )
             return response.content.strip()
+        except ContextLengthError as e:
+            logger.warning(
+                "生成摘要时上下文长度超出限制: %s (消息数: %d)",
+                e, len(messages)
+            )
+            return f"（压缩了 {len(messages)} 条历史消息）"
         except Exception as e:
             logger.error("生成摘要失败: %s", e)
             return f"（压缩了 {len(messages)} 条历史消息）"

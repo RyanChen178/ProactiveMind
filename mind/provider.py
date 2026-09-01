@@ -12,6 +12,11 @@ import httpx
 from mind.runtime import RuntimeConfig
 
 
+class ContextLengthError(Exception):
+    """上下文长度超出模型限制时抛出的异常。"""
+    pass
+
+
 @dataclass
 class ToolCall:
     """LLM 返回的工具调用请求。"""
