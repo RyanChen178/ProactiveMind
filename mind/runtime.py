@@ -5,6 +5,8 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass, field
 
+from mind.catalog import get_context_window, get_max_output_tokens
+
 
 @dataclass(frozen=True)
 class RuntimeConfig:
@@ -96,8 +98,13 @@ def load_runtime_registry(data: dict) -> RuntimeRegistry:
         model = runtime_data.get('model', '')
         api_key = _expand_env_var(runtime_data.get('api_key', ''))
         base_url = _expand_env_var(runtime_data.get('base_url', ''))
-        context_window = runtime_data.get('context_window', 128000)
-        max_output_tokens = runtime_data.get('max_output_tokens', 0)
+        # 从配置中获取，如果未指定则从能力目录查找
+        context_window = runtime_data.get('context_window')
+        if context_window is None:
+            context_window = get_context_window(provider, model, default=128000)
+        max_output_tokens = runtime_data.get('max_output_tokens')
+        if max_output_tokens is None:
+            max_output_tokens = get_max_output_tokens(provider, model, default=0)
         input_modalities_raw = runtime_data.get('input_modalities', ['text'])
         if isinstance(input_modalities_raw, list):
             input_modalities = tuple(str(m) for m in input_modalities_raw)

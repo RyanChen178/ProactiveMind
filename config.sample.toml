@@ -21,7 +21,11 @@ provider = "deepseek"
 model = "deepseek-v4-flash"
 api_key = "${DEEPSEEK_API_KEY}"
 base_url = "https://api.deepseek.com/v1"
+# 可选：上下文窗口大小（token 数）
+# 如果不指定，会自动从模型能力目录查找（deepseek-v4-flash 默认为 128000）
 context_window = 128000
+# 可选：最大输出 token 数（0 表示不限制）
+# 如果不指定，会自动从模型能力目录查找
 max_output_tokens = 0
 input_modalities = ["text"]
 # 可选：启用思考模式
@@ -34,6 +38,7 @@ provider = "qwen"
 model = "qwen-flash"
 api_key = "${QWEN_API_KEY}"
 base_url = "https://dashscope.aliyuncs.com/compatible-mode/v1"
+# 可选：如果不指定，会自动从模型能力目录查找（qwen-flash 默认为 128000）
 context_window = 128000
 max_output_tokens = 0
 input_modalities = ["text"]
