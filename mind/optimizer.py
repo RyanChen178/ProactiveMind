@@ -123,8 +123,8 @@ class MemoryOptimizer:
         with open(self._pending_file, "r", encoding="utf-8") as f:
             for line in f:
                 line = line.strip()
-                if line and not line.startswith("#"):
-                    facts.append(line)
+                if line.startswith("- "):
+                    facts.append(line[2:])
         
         return facts
     
@@ -176,8 +176,8 @@ class MemoryOptimizer:
         with open(self._memory_file, "r", encoding="utf-8") as f:
             for line in f:
                 line = line.strip()
-                if line and not line.startswith("#"):
-                    facts.append(line)
+                if line.startswith("- "):
+                    facts.append(line[2:])
         
         return facts
     
@@ -240,3 +240,22 @@ class MemoryOptimizerLoop:
             logger.debug("[optimizer] Next optimization in %.0f seconds", secs)
             
      
+
+            # Sleep until next tick
+            await asyncio.sleep(secs)
+            
+            if not self._running:
+                break
+            
+            # Run optimization
+            try:
+                if self._optimizer:
+                    await self._optimizer.optimize()
+            except Exception as e:
+                logger.error(f"[optimizer] Optimization failed: {e}")
+    
+    def _seconds_until_next_tick(self) -> float:
+        """Calculate seconds until next optimization run."""
+        now = self._now_fn()
+        # Align to interval boundaries
+        return self._interval - (now.timestamp() % self._interval)

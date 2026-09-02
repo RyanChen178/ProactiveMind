@@ -23,6 +23,13 @@ EventHandler = Callable[[Any], Any | Awaitable[Any]]
 
 
 @dataclass
+class Event:
+    """事件基类"""
+    name: str
+    data: Any
+
+
+@dataclass
 class TurnStartedData:
     """Turn 开始事件数据"""
     session_id: str
@@ -303,5 +310,31 @@ async def emit_error_occurred(error_type: str, error_message: str, context: dict
     event = ErrorOccurredEvent(
         name="error_occurred",
         data=ErrorOccurredData(error_type, error_message, context or {})
+    )
+    await get_event_bus().publish(event)
+
+
+@dataclass
+class ConsolidationCommittedData:
+    """记忆归档完成事件数据。"""
+    archived_count: int
+    total_pending: int
+
+
+@dataclass
+class ConsolidationCommittedEvent:
+    """记忆归档完成事件"""
+    name: str
+    data: ConsolidationCommittedData
+
+
+async def emit_consolidation_committed(archived_count: int, total_pending: int) -> None:
+    """发布记忆归档完成事件。"""
+    event = ConsolidationCommittedEvent(
+        name="consolidation_committed",
+        data=ConsolidationCommittedData(
+            archived_count=archived_count,
+            total_pending=total_pending
+        )
     )
     await get_event_bus().publish(event)
