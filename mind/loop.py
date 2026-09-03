@@ -20,6 +20,7 @@ from mind.permission import create_default_permission
 from mind.vector_store import VectorStore
 from mind.compaction import ContextCompactor
 from mind.lightweight_assistant import LightweightModelAssistant
+from mind.extensions.lifecycle import TurnContext, invoke_hooks
 from events import EventHub, TurnCompleted
 from initiative.presence import PresenceStore
 from extensions.manager import ExtensionManager
@@ -88,6 +89,17 @@ class MindLoop:
         """执行一轮对话：用户输入 → 可能多轮工具调用 → 最终回复。"""
 
         self._session.add_user(user_input)
+
+        # 生命周期钩子：before_turn
+        turn_context = TurnContext(
+            session_id=self._session_id,
+            user_message=user_input
+        )
+        await invoke_hooks("before_turn", turn_context)
+        
+        # 如果 before_turn 钩子要求跳过，直接返回
+        if turn_context.should_skip:
+            return turn_context.skip_reason
         if self._presence is not None:
             self._presence.record_user_message()
 
@@ -96,11 +108,17 @@ class MindLoop:
         tool_names: list[str] = []
 
         for _step in range(max_steps):
-            messages = self._build_messages()
+            # 生命周期钩子：before_reasoning
+            await invoke_hooks("before_reasoning", turn_context)
+            
+            messages = await self._build_messages(turn_context)
             response = await self._provider.chat(
                 messages, tools=self._tools.get_schemas()
             )
             _merge_usage(total_usage, response.usage)
+            
+            # 生命周期钩子：after_reasoning
+            await invoke_hooks("after_reasoning", turn_context)
 
             # 没有 tool_calls → 最终回复
             if not response.tool_calls:
@@ -115,6 +133,10 @@ class MindLoop:
                     usage=total_usage,
                     latency_ms=latency_ms,
                 )
+                
+                # 生命周期钩子：after_turn
+                await invoke_hooks("after_turn", turn_context)
+                
                 return response.content
 
             # 有 tool_calls → 执行工具后继续循环
@@ -132,6 +154,10 @@ class MindLoop:
             usage=total_usage,
             latency_ms=latency_ms,
         )
+        
+        # 生命周期钩子：after_turn
+        await invoke_hooks("after_turn", turn_context)
+        
         return message
 
     async def run_stream(
@@ -143,14 +169,27 @@ class MindLoop:
         if self._presence is not None:
             self._presence.record_user_message()
 
+        # 创建 TurnContext
+        turn_context = TurnContext(session_id=self._session_id, user_message=user_input)
+        
+        # 生命周期钩子：before_turn
+        await invoke_hooks("before_turn", turn_context)
+        
+        if turn_context.should_skip:
+            yield turn_context.skip_reason
+            return
+
         start = time.monotonic()
         total_usage: dict[str, int] = {}
         tool_names: list[str] = []
 
         for _step in range(max_steps):
+            # 生命周期钩子：before_reasoning
+            await invoke_hooks("before_reasoning", turn_context)
+            
             response: LLMResponse | None = None
             async for event in self._provider.chat_stream(
-                self._build_messages(), tools=self._tools.get_schemas()
+                await self._build_messages(turn_context), tools=self._tools.get_schemas()
             ):
                 if event.content:
                     yield event.content
@@ -159,6 +198,10 @@ class MindLoop:
             if response is None:
                 raise RuntimeError("LLM 流式响应缺少最终结果")
             _merge_usage(total_usage, response.usage)
+            
+            # 生命周期钩子：after_reasoning
+            await invoke_hooks("after_reasoning", turn_context)
+            
             if not response.tool_calls:
                 self._session.add_assistant(response.content)
                 await self._emit_turn_committed(user_input, response.content)
@@ -171,6 +214,10 @@ class MindLoop:
                     usage=total_usage,
                     latency_ms=latency_ms,
                 )
+                
+                # 生命周期钩子：after_turn
+                await invoke_hooks("after_turn", turn_context)
+                
                 return
             tool_names.extend(c.name for c in response.tool_calls)
             await self._execute_tool_calls(response)
@@ -186,6 +233,10 @@ class MindLoop:
             usage=total_usage,
             latency_ms=latency_ms,
         )
+        
+        # 生命周期钩子：after_turn
+        await invoke_hooks("after_turn", turn_context)
+        
         yield message
 
     async def _execute_tool_calls(self, response: LLMResponse) -> None:
@@ -207,7 +258,10 @@ class MindLoop:
             result = await self._tools.execute(call)
             self._session.add_tool_result(call.id, result)
 
-    def _build_messages(self) -> list[dict]:
+    async def _build_messages(self, turn_context: TurnContext) -> list[dict]:
+        # 生命周期钩子：prompt_render（在构建消息之前）
+        await invoke_hooks("prompt_render", turn_context)
+        
         messages = [{"role": "system", "content": self._system_prompt}]
         messages.extend(
             self._session.get_history(self._config.max_history_tokens)
@@ -217,7 +271,7 @@ class MindLoop:
         if self._compactor.should_compact(messages):
             log.info("触发上下文压缩")
             try:
-                messages, checkpoint = self._compactor.compact(messages)
+                messages, checkpoint = await self._compactor.compact(messages)
                 log.info(
                     "压缩完成: generation=%d, tokens=%d→%d",
                     checkpoint.generation,
