@@ -9,6 +9,12 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
 
+from initiative.data_sources import (
+    AlertDataSource,
+    ContentDataSource,
+    ContextDataSource,
+    DataSourceManager,
+)
 from initiative.drift import WanderResult
 from initiative.loop import InitiativeLoop
 from initiative.presence import PresenceStore
@@ -128,6 +134,179 @@ class InitiativeLoopTest(unittest.IsolatedAsyncioTestCase):
 
             self.assertEqual(loop._tick_count, 2)
             self.assertGreater(len(sleep_calls), 0)
+
+    async def test_pushes_alert_with_highest_priority(self) -> None:
+        """Alert 应优先于其他数据源被推送。"""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            loop, presence = self._make_loop(temp_dir)
+            pushed: list[str] = []
+
+            async def push_callback(content: str) -> None:
+                pushed.append(content)
+
+            manager = DataSourceManager()
+            manager.content_source.add_content("普通内容")
+            manager.context_source.add_context("上下文", priority=1.0)
+            manager.alert_source.add_alert("系统严重错误")
+
+            loop._data_source_manager = manager
+            loop._push_callback = push_callback
+
+            result = await loop._tick()
+            presence.close()
+
+            self.assertEqual(result.action, "pushed")
+            self.assertEqual(result.pushed_source, "alert")
+            self.assertIn("系统严重错误", result.pushed_content)
+            self.assertEqual(len(pushed), 1)
+
+    async def test_no_data_source_no_push(self) -> None:
+        """数据源为空时不应推送（无 callback 时）。"""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            loop, presence = self._make_loop(temp_dir)
+            pushed: list[str] = []
+
+            async def push_callback(content: str) -> None:
+                pushed.append(content)
+
+            manager = DataSourceManager()
+            loop._data_source_manager = manager
+            loop._push_callback = push_callback
+
+            result = await loop._tick()
+            presence.close()
+
+            self.assertEqual(result.action, "no_content")
+            self.assertEqual(result.pushed_source, "")
+            self.assertEqual(len(pushed), 0)
+
+    async def test_falls_back_to_drift_when_data_source_empty(self) -> None:
+        """数据源为空时回退到 Drift。"""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            loop, presence = self._make_loop(temp_dir)
+            pushed: list[str] = []
+
+            async def fake_drift_run():
+                return WanderResult(
+                    action="executed",
+                    skill_name="audit-memory",
+                    summary="审计完成",
+                )
+
+            async def push_callback(content: str) -> None:
+                pushed.append(content)
+
+            manager = DataSourceManager()  # 空数据源
+            loop._data_source_manager = manager
+            loop._drift_loop = MagicMock()
+            loop._drift_loop.run = fake_drift_run
+            loop._push_callback = push_callback
+
+            result = await loop._tick()
+            presence.close()
+
+            # 数据源为空，drift 执行了 skill，所以应推 drift 结果
+            self.assertEqual(result.action, "pushed")
+            self.assertEqual(result.pushed_source, "drift")
+            self.assertIn("audit-memory", result.pushed_content)
+            self.assertEqual(len(pushed), 1)
+
+    async def test_data_source_takes_precedence_over_drift(self) -> None:
+        """数据源有内容时优先于 Drift 推送。"""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            loop, presence = self._make_loop(temp_dir)
+            pushed: list[str] = []
+
+            async def fake_drift_run():
+                return WanderResult(
+                    action="executed",
+                    skill_name="audit-memory",
+                    summary="审计完成",
+                )
+
+            async def push_callback(content: str) -> None:
+                pushed.append(content)
+
+            manager = DataSourceManager()
+            manager.alert_source.add_alert("紧急告警")
+
+            loop._data_source_manager = manager
+            loop._drift_loop = MagicMock()
+            loop._drift_loop.run = fake_drift_run
+            loop._push_callback = push_callback
+
+            result = await loop._tick()
+            presence.close()
+
+            self.assertEqual(result.action, "pushed")
+            self.assertEqual(result.pushed_source, "alert")
+            self.assertIn("紧急告警", result.pushed_content)
+            self.assertNotIn("audit-memory", result.pushed_content)
+            self.assertEqual(len(pushed), 1)
+
+    async def test_push_without_callback_only_logs(self) -> None:
+        """无 push_callback 时数据源不应推送（保持原行为）。"""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            loop, presence = self._make_loop(temp_dir)
+
+            manager = DataSourceManager()
+            manager.alert_source.add_alert("紧急告警")
+
+            loop._data_source_manager = manager
+            # 没有 push_callback
+
+            result = await loop._tick()
+            presence.close()
+
+            # 没有 callback 时也不进入 Drift（保持向后兼容）
+            self.assertEqual(result.action, "no_content")
+
+    async def test_content_source_filtered_by_threshold(self) -> None:
+        """Content 数据源评分低于阈值时不应被推送。"""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            loop, presence = self._make_loop(temp_dir)
+            pushed: list[str] = []
+
+            async def push_callback(content: str) -> None:
+                pushed.append(content)
+
+            async def low_scorer(content: str) -> float:
+                return 0.3  # 低于默认阈值 0.7
+
+            manager = DataSourceManager()
+            manager.content_source._llm_scorer = low_scorer
+            manager.content_source.add_content("低分内容")
+
+            loop._data_source_manager = manager
+            loop._push_callback = push_callback
+
+            result = await loop._tick()
+            presence.close()
+
+            self.assertEqual(result.action, "no_content")
+            self.assertEqual(len(pushed), 0)
+
+    async def test_records_proactive_after_data_source_push(self) -> None:
+        """数据源推送后应记录主动推送时间。"""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            loop, presence = self._make_loop(temp_dir)
+            pushed: list[str] = []
+
+            async def push_callback(content: str) -> None:
+                pushed.append(content)
+
+            manager = DataSourceManager()
+            manager.alert_source.add_alert("告警")
+            loop._data_source_manager = manager
+            loop._push_callback = push_callback
+
+            before = presence.get_last_proactive_at()
+            await loop._tick()
+            after = presence.get_last_proactive_at()
+            presence.close()
+
+            self.assertIsNone(before)
+            self.assertIsNotNone(after)
 
 
 class PresenceStoreTest(unittest.TestCase):

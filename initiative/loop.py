@@ -1,9 +1,10 @@
 """主动推送 —— InitiativeLoop 定时轮询骨架。
 
 每轮 tick 流程：
-  1. Gate    —— 检查是否应该执行（被动回复忙、冷却中、概率跳过）
-  2. Decide  —— 判断是否有内容值得推送（MVP 阶段留空，后续接数据源）
-  3. Deliver —— 发送消息（MVP 阶段留空，后续接渠道）
+  1. Gate     —— 检查是否应该执行（被动回复忙、冷却中）
+  2. Decide   —— 依次查询三路数据源（alert > content > context），
+                 命中即推送；无内容则进入 Drift 空闲任务
+  3. Deliver  —— 发送消息到 push_callback
 """
 
 from __future__ import annotations
@@ -14,6 +15,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Awaitable, Callable
 
+from initiative.data_sources import DataSourceItem, DataSourceManager
 from initiative.drift import WanderLoop
 from initiative.energy import compute_urgency, next_interval
 from initiative.presence import PresenceStore
@@ -33,6 +35,7 @@ class TickResult:
     interval_s: float
     reason: str = ""
     pushed_content: str = ""
+    pushed_source: str = ""  # 数据源类型 "alert"/"content"/"context"/"drift"
 
 
 class InitiativeLoop:
@@ -44,12 +47,14 @@ class InitiativeLoop:
         *,
         is_passive_busy=None,
         drift_loop: WanderLoop | None = None,
+        data_source_manager: DataSourceManager | None = None,
         push_callback: PushCallback | None = None,
         max_ticks: int | None = None,
     ) -> None:
         self._presence = presence
         self._is_passive_busy = is_passive_busy or (lambda: False)
         self._drift_loop = drift_loop
+        self._data_source_manager = data_source_manager
         self._push_callback = push_callback
         self._max_ticks = max_ticks
         self._running = False
@@ -112,8 +117,13 @@ class InitiativeLoop:
                 log.info("%s 跳过: 冷却中（%.0fs/%.0fs）", tick_id, elapsed, interval)
                 return result
 
-        # Decide: MVP 阶段没有数据源，总是 no_content
-        # 如果有 Drift 且无内容可推，进入 Drift 空闲任务
+        # Decide: 优先查询三路数据源（alert/content/context）
+        if self._data_source_manager is not None:
+            push_result = await self._try_push_from_data_source(tick_id, now)
+            if push_result is not None:
+                return push_result
+
+        # 数据源无内容时回退到 Drift 空闲任务
         if self._drift_loop is not None:
             drift_result = await self._drift_loop.run()
 
@@ -137,6 +147,7 @@ class InitiativeLoop:
                         urgency=urgency, interval_s=interval,
                         reason="drift_push",
                         pushed_content=push_text,
+                        pushed_source="drift",
                     )
                 except Exception as exc:
                     log.warning("%s 推送失败: %s", tick_id, exc)
@@ -163,6 +174,64 @@ class InitiativeLoop:
             tick_id=tick_id, action="no_content",
             urgency=urgency, interval_s=interval,
         )
+
+    async def _try_push_from_data_source(
+        self, tick_id: str, now: datetime
+    ) -> TickResult | None:
+        """从三路数据源中按优先级尝试推送一条内容。
+
+        Returns:
+            已推送时返回 TickResult(action="pushed")；无内容时返回 None。
+        """
+        if self._data_source_manager is None or self._push_callback is None:
+            return None
+
+        try:
+            items: list[DataSourceItem] = await self._data_source_manager.fetch_all()
+        except Exception as exc:
+            log.warning("%s 数据源 fetch 失败: %s", tick_id, exc)
+            return None
+
+        if not items:
+            log.debug("%s 数据源为空", tick_id)
+            return None
+
+        # 取优先级最高的条目
+        top = items[0]
+        urgency = compute_urgency(
+            self._presence.get_last_user_at() or now, now
+        )
+        interval = next_interval(
+            self._presence.get_last_user_at() or now, now
+        )
+
+        # 格式化推送文本：标记数据源类型便于用户识别
+        prefix = {
+            "alert": "[Alert]",
+            "content": "[Content]",
+            "context": "[Context]",
+        }.get(top.source, f"[{top.source}]")
+        push_text = f"{prefix} {top.content}"
+
+        try:
+            await self._push_callback(push_text)
+            self._presence.record_proactive(now)
+            log.info(
+                "%s 数据源推送: source=%s priority=%.2f",
+                tick_id, top.source, top.priority,
+            )
+            return TickResult(
+                tick_id=tick_id,
+                action="pushed",
+                urgency=urgency,
+                interval_s=interval,
+                reason=f"data_source:{top.source}",
+                pushed_content=push_text,
+                pushed_source=top.source,
+            )
+        except Exception as exc:
+            log.warning("%s 数据源推送失败: %s", tick_id, exc)
+            return None
 
     def stop(self) -> None:
         self._running = False
