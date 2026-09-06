@@ -3,6 +3,8 @@
 启动模式：
   python main.py          —— CLI 对话 REPL
   python main.py web      —— Web Chat（http://127.0.0.1:6322）
+  python main.py telegram —— Telegram Bot 渠道
+  python main.py setup    —— 交互式配置向导（生成 config.toml）
 """
 
 from __future__ import annotations
@@ -128,9 +130,80 @@ async def web_server() -> None:
         presence.close()
 
 
+async def telegram_gateway() -> None:
+    """启动 Telegram Bot 渠道。"""
+    from gateways.telegram_bot import run_telegram_gateway
+
+    config = load_config("config.toml")
+    bus = EventHub()
+    bus.start()
+    presence = PresenceStore(config.workspace / "presence.db")
+    agent = MindLoop(config, bus=bus, presence=presence)
+
+    try:
+        await run_telegram_gateway(agent, config)
+    finally:
+        await agent.aclose()
+        await bus.aclose()
+        presence.close()
+
+
+def run_setup_cli(args: list[str]) -> None:
+    """启动交互式 Setup 向导。"""
+    from bootstrap.setup import run_setup_from_args
+
+    parsed = _parse_setup_args(args)
+    try:
+        result = run_setup_from_args(parsed)
+        print(f"配置已写入: {result}")
+    except SetupError as exc:
+        print(f"错误: {exc}")
+        sys.exit(1)
+
+
+def _parse_setup_args(args: list[str]) -> dict[str, str | bool]:
+    """解析 setup 命令行参数为 dict。"""
+    parsed: dict[str, str | bool] = {}
+    i = 0
+    while i < len(args):
+        token = args[i]
+        if token == "--non-interactive":
+            parsed["non_interactive"] = True
+            i += 1
+        elif token in ("--output", "-o") and i + 1 < len(args):
+            parsed["output"] = args[i + 1]
+            i += 2
+        elif token == "--overwrite":
+            parsed["overwrite"] = True
+            i += 1
+        elif token == "--provider" and i + 1 < len(args):
+            parsed["provider"] = args[i + 1]
+            i += 2
+        elif token == "--model" and i + 1 < len(args):
+            parsed["model"] = args[i + 1]
+            i += 2
+        elif token == "--api-key" and i + 1 < len(args):
+            parsed["api_key"] = args[i + 1]
+            i += 2
+        elif token == "--base-url" and i + 1 < len(args):
+            parsed["base_url"] = args[i + 1]
+            i += 2
+        elif token == "--workspace" and i + 1 < len(args):
+            parsed["workspace"] = args[i + 1]
+            i += 2
+        else:
+            print(f"忽略未知参数: {token}")
+            i += 1
+    return parsed
+
+
 if __name__ == "__main__":
     mode = sys.argv[1] if len(sys.argv) > 1 else "cli"
     if mode == "web":
         asyncio.run(web_server())
+    elif mode == "telegram":
+        asyncio.run(telegram_gateway())
+    elif mode == "setup":
+        run_setup_cli(sys.argv[2:])
     else:
         asyncio.run(chat_repl())
