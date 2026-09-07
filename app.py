@@ -1,10 +1,12 @@
 """ProactiveMind 入口。
 
 启动模式：
-  python main.py          —— CLI 对话 REPL
-  python main.py web      —— Web Chat（http://127.0.0.1:6322）
-  python main.py telegram —— Telegram Bot 渠道
-  python main.py setup    —— 交互式配置向导（生成 config.toml）
+  python main.py             —— CLI 对话 REPL
+  python main.py web         —— Web Chat（http://127.0.0.1:6322）
+  python main.py telegram    —— Telegram Bot 渠道
+  python main.py dashboard   —— Dashboard 调试入口
+  python main.py setup       —— 交互式配置向导（生成 config.toml）
+  python main.py supervise MODE —— Supervisor 模式托管 gateway
 """
 
 from __future__ import annotations
@@ -161,6 +163,53 @@ def run_setup_cli(args: list[str]) -> None:
         sys.exit(1)
 
 
+def run_supervisor_cli(args: list[str]) -> None:
+    """以 Supervisor 模式托管 gateway 子进程。"""
+    from bootstrap.supervisor import supervise
+
+    if not args:
+        print("用法: python app.py supervise <web|telegram>")
+        sys.exit(1)
+    mode = args[0]
+    if mode not in ("web", "telegram"):
+        print(f"不支持的 gateway 模式: {mode}")
+        sys.exit(1)
+    try:
+        config = load_config("config.toml")
+    except FileNotFoundError as exc:
+        print(f"配置错误: {exc}")
+        sys.exit(1)
+    workspace = config.workspace
+    exit_code = supervise(mode, workspace)
+    sys.exit(exit_code)
+
+
+async def dashboard_server() -> None:
+    """启动 Dashboard 调试入口（http://127.0.0.1:6323）。"""
+    import uvicorn
+
+    from gateways.dashboard import create_dashboard_app
+
+    config = load_config("config.toml")
+    bus = EventHub()
+    bus.start()
+    presence = PresenceStore(config.workspace / "presence.db")
+    agent = MindLoop(config, bus=bus, presence=presence)
+
+    app = create_dashboard_app(agent, presence, config.workspace)
+
+    uconfig = uvicorn.Config(app, host="127.0.0.1", port=6323, log_level="info")
+    server = uvicorn.Server(uconfig)
+
+    print("ProactiveMind Dashboard — http://127.0.0.1:6323")
+    try:
+        await server.serve()
+    finally:
+        await agent.aclose()
+        await bus.aclose()
+        presence.close()
+
+
 def _parse_setup_args(args: list[str]) -> dict[str, str | bool]:
     """解析 setup 命令行参数为 dict。"""
     parsed: dict[str, str | bool] = {}
@@ -203,7 +252,11 @@ if __name__ == "__main__":
         asyncio.run(web_server())
     elif mode == "telegram":
         asyncio.run(telegram_gateway())
+    elif mode == "dashboard":
+        asyncio.run(dashboard_server())
     elif mode == "setup":
         run_setup_cli(sys.argv[2:])
+    elif mode == "supervise":
+        run_supervisor_cli(sys.argv[2:])
     else:
         asyncio.run(chat_repl())
