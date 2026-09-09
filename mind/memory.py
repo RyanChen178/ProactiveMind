@@ -7,15 +7,24 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from mind.embeddings import EmbeddingStore
 
 
 class MemoryStore:
     """简单的文件记忆存储。"""
 
-    def __init__(self, workspace: Path) -> None:
+    def __init__(
+        self,
+        workspace: Path,
+        embedding_store: "EmbeddingStore | None" = None,
+    ) -> None:
         self._workspace = workspace
         self._file = workspace / "MEMORY.md"
         self._pending_file = workspace / "PENDING.md"
+        self._embedding_store = embedding_store
         self._ensure_file()
 
     def _ensure_file(self) -> None:
@@ -31,10 +40,17 @@ class MemoryStore:
                 encoding="utf-8",
             )
 
+    def attach_embedding_store(self, store: "EmbeddingStore") -> None:
+        """运行时挂载 EmbeddingStore（可选）。"""
+        self._embedding_store = store
+
     def append(self, fact: str) -> None:
         """追加一条事实到记忆文件。"""
         with self._file.open("a", encoding="utf-8") as f:
             f.write(f"- {fact}\n")
+        if self._embedding_store is not None:
+            # 预热缓存：append 后立即生成 embedding
+            self._embedding_store.embed_text(fact)
 
     def append_pending(self, facts: list[str]) -> None:
         """将候选事实追加到待归档缓冲。"""
@@ -44,6 +60,9 @@ class MemoryStore:
         with self._pending_file.open("a", encoding="utf-8") as f:
             for fact in facts:
                 f.write(f"- {fact}\n")
+        if self._embedding_store is not None:
+            for fact in facts:
+                self._embedding_store.embed_text(fact)
 
     def read_pending(self) -> list[str]:
         """读取待人工确认的候选事实。"""
@@ -83,6 +102,28 @@ class MemoryStore:
             for line in lines
             if line.startswith("- ") and keyword.lower() in line.lower()
         ]
+
+    def semantic_recall(
+        self,
+        query: str,
+        top_k: int = 5,
+        threshold: float = 0.01,
+    ) -> list[tuple[str, float]]:
+        """语义检索：在长期记忆中找到与 query 最相似的事实。
+
+        Returns:
+            [(fact, score), ...] 按 score 降序，最多 top_k 个。
+        """
+        if self._embedding_store is None:
+            # 未挂载 embedding 时退化到关键词搜索（带 score=1.0）
+            hits = self.search(query)[:top_k]
+            return [(h, 1.0) for h in hits]
+        facts = self._read_facts(self._file)
+        if not facts:
+            return []
+        return self._embedding_store.semantic_search(
+            query, facts, top_k=top_k, threshold=threshold,
+        )
 
     def read_all(self) -> str:
         """读取全部记忆内容。"""
