@@ -6,6 +6,8 @@ import asyncio
 import json
 import logging
 import time
+import uuid
+from dataclasses import dataclass
 
 from mind.config import Config
 from mind.consolidation import MemoryConsolidator
@@ -26,6 +28,22 @@ from initiative.presence import PresenceStore
 from extensions.manager import ExtensionManager
 
 log = logging.getLogger(__name__)
+
+
+class TurnInterruptedError(RuntimeError):
+    """Turn 被外部中断。"""
+
+    def __init__(self, turn_id: str) -> None:
+        super().__init__(f"turn {turn_id} was interrupted")
+        self.turn_id = turn_id
+
+
+@dataclass
+class _InterruptToken:
+    """单轮 turn 的中断令牌。"""
+
+    turn_id: str
+    requested: bool = False
 
 
 def _merge_usage(target: dict[str, int], source: dict[str, int]) -> None:
@@ -77,6 +95,8 @@ class MindLoop:
         self._presence = presence
         self._extension_manager: ExtensionManager | None = None
         self._stats = TurnStats()
+        self._active_token: _InterruptToken | None = None
+        self._active_task: asyncio.Task | None = None
         self._load_extensions()
         self._register_bus_handlers()
         self._refresh_system_prompt()
@@ -84,6 +104,29 @@ class MindLoop:
     @property
     def stats(self) -> TurnStats:
         return self._stats
+
+    @property
+    def is_busy(self) -> bool:
+        """是否正在执行 turn（可用于主动推送判断）。"""
+        return self._active_token is not None
+
+    def interrupt_current(self, reason: str | None = None) -> bool:
+        """请求中断当前正在执行的 turn。
+
+        Returns:
+            True 表示成功标记了一个活跃 turn，False 表示当前没有 turn。
+        """
+        token = self._active_token
+        if token is None or token.requested:
+            return False
+        token.requested = True
+        log.info("MindLoop 收到中断请求 turn_id=%s reason=%s", token.turn_id, reason or "-")
+        return True
+
+    def _check_interrupted(self, token: _InterruptToken) -> None:
+        """检查中断标记，触发则抛出。"""
+        if token.requested:
+            raise TurnInterruptedError(token.turn_id)
 
     async def run(self, user_input: str, max_steps: int = 10) -> str:
         """执行一轮对话：用户输入 → 可能多轮工具调用 → 最终回复。"""
@@ -169,75 +212,90 @@ class MindLoop:
         if self._presence is not None:
             self._presence.record_user_message()
 
-        # 创建 TurnContext
-        turn_context = TurnContext(session_id=self._session_id, user_message=user_input)
-        
-        # 生命周期钩子：before_turn
-        await invoke_hooks("before_turn", turn_context)
-        
-        if turn_context.should_skip:
-            yield turn_context.skip_reason
-            return
+        # 注册中断令牌 + 持有当前 task 句柄
+        token = _InterruptToken(turn_id=uuid.uuid4().hex)
+        self._active_token = token
+        self._active_task = asyncio.current_task()
 
-        start = time.monotonic()
-        total_usage: dict[str, int] = {}
-        tool_names: list[str] = []
+        try:
+            # 创建 TurnContext
+            turn_context = TurnContext(session_id=self._session_id, user_message=user_input)
 
-        for _step in range(max_steps):
-            # 生命周期钩子：before_reasoning
-            await invoke_hooks("before_reasoning", turn_context)
-            
-            response: LLMResponse | None = None
-            async for event in self._provider.chat_stream(
-                await self._build_messages(turn_context), tools=self._tools.get_schemas()
-            ):
-                if event.content:
-                    yield event.content
-                if event.response is not None:
-                    response = event.response
-            if response is None:
-                raise RuntimeError("LLM 流式响应缺少最终结果")
-            _merge_usage(total_usage, response.usage)
-            
-            # 生命周期钩子：after_reasoning
-            await invoke_hooks("after_reasoning", turn_context)
-            
-            if not response.tool_calls:
-                self._session.add_assistant(response.content)
-                await self._emit_turn_committed(user_input, response.content)
-                latency_ms = (time.monotonic() - start) * 1000
-                self._stats.record(
-                    session_id=self._session_id,
-                    user_input=user_input,
-                    assistant_reply=response.content,
-                    tool_calls=tool_names,
-                    usage=total_usage,
-                    latency_ms=latency_ms,
-                )
-                
-                # 生命周期钩子：after_turn
-                await invoke_hooks("after_turn", turn_context)
-                
+            # 生命周期钩子：before_turn
+            await invoke_hooks("before_turn", turn_context)
+
+            if turn_context.should_skip:
+                yield turn_context.skip_reason
                 return
-            tool_names.extend(c.name for c in response.tool_calls)
-            await self._execute_tool_calls(response)
 
-        message = "（达到最大工具调用次数，终止本轮）"
-        self._session.add_assistant(message)
-        latency_ms = (time.monotonic() - start) * 1000
-        self._stats.record(
-            session_id=self._session_id,
-            user_input=user_input,
-            assistant_reply=message,
-            tool_calls=tool_names,
-            usage=total_usage,
-            latency_ms=latency_ms,
-        )
-        
-        # 生命周期钩子：after_turn
-        await invoke_hooks("after_turn", turn_context)
-        
-        yield message
+            start = time.monotonic()
+            total_usage: dict[str, int] = {}
+            tool_names: list[str] = []
+
+            for _step in range(max_steps):
+                # 生命周期钩子：before_reasoning
+                await invoke_hooks("before_reasoning", turn_context)
+                self._check_interrupted(token)
+
+                response: LLMResponse | None = None
+                async for event in self._provider.chat_stream(
+                    await self._build_messages(turn_context), tools=self._tools.get_schemas()
+                ):
+                    self._check_interrupted(token)
+                    if event.content:
+                        yield event.content
+                    if event.response is not None:
+                        response = event.response
+                if response is None:
+                    raise RuntimeError("LLM 流式响应缺少最终结果")
+                _merge_usage(total_usage, response.usage)
+
+                # 生命周期钩子：after_reasoning
+                await invoke_hooks("after_reasoning", turn_context)
+                self._check_interrupted(token)
+
+                if not response.tool_calls:
+                    self._session.add_assistant(response.content)
+                    await self._emit_turn_committed(user_input, response.content)
+                    latency_ms = (time.monotonic() - start) * 1000
+                    self._stats.record(
+                        session_id=self._session_id,
+                        user_input=user_input,
+                        assistant_reply=response.content,
+                        tool_calls=tool_names,
+                        usage=total_usage,
+                        latency_ms=latency_ms,
+                    )
+
+                    # 生命周期钩子：after_turn
+                    await invoke_hooks("after_turn", turn_context)
+
+                    return
+                tool_names.extend(c.name for c in response.tool_calls)
+                await self._execute_tool_calls(response)
+                self._check_interrupted(token)
+
+            message = "（达到最大工具调用次数，终止本轮）"
+            self._session.add_assistant(message)
+            latency_ms = (time.monotonic() - start) * 1000
+            self._stats.record(
+                session_id=self._session_id,
+                user_input=user_input,
+                assistant_reply=message,
+                tool_calls=tool_names,
+                usage=total_usage,
+                latency_ms=latency_ms,
+            )
+
+            # 生命周期钩子：after_turn
+            await invoke_hooks("after_turn", turn_context)
+
+            yield message
+        finally:
+            # 清理中断令牌，关闭 turn
+            if self._active_token is token:
+                self._active_token = None
+                self._active_task = None
 
     async def _execute_tool_calls(self, response: LLMResponse) -> None:
         """持久化模型工具调用，并按顺序执行工具。"""
