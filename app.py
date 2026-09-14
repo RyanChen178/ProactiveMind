@@ -46,7 +46,31 @@ async def chat_repl() -> None:
     agent, bus, presence, proactive_loop = _build_agent()
     proactive_task = asyncio.create_task(proactive_loop.run())
 
-    print("ProactiveMind — 输入消息开始对话，/pending 查看记忆，Ctrl+C 退出\n")
+    print("ProactiveMind — 输入消息开始对话，/help 查看命令，Ctrl+C 退出\n")
+
+    from cli_commands import CommandContext, dispatch
+    from pathlib import Path as _P
+    from extensions import notes as notes_ext
+
+    # 构造 CLI 命令上下文（绑定 agent / skills_dir / notes_store）
+    config = agent._config
+    notes_store = notes_ext._NoteStore(config.workspace)
+
+    def _memory_query(query: str, top_k: int) -> list[tuple[str, float]]:
+        try:
+            return agent._memory.semantic_recall(query, top_k=top_k)
+        except Exception:
+            return []
+
+    ctx = CommandContext(
+        agent=agent,
+        proactive_loop=proactive_loop,
+        skills_dir=_P(config.workspace).parent / "playbooks",
+        notes_store=notes_store,
+        memory_query=_memory_query,
+        output=print,
+    )
+
     try:
         while True:
             try:
@@ -56,27 +80,11 @@ async def chat_repl() -> None:
                 break
             if not user_input:
                 continue
-            if user_input in ("/clear", "/reset"):
-                agent.reset_session()
-                print("（已新建会话，旧历史仍保留）\n")
-                continue
-            if user_input == "/pending":
-                facts = agent.get_pending_memories()
-                if not facts:
-                    print("（没有待归档记忆）\n")
-                else:
-                    print("（待归档记忆）")
-                    print("\n".join(f"- {fact}" for fact in facts))
-                    print()
-                continue
-            if user_input == "/promote":
-                facts = agent.promote_pending_memories()
-                if not facts:
-                    print("（没有新的候选记忆可提升）\n")
-                else:
-                    print(f"（已提升 {len(facts)} 条候选记忆）\n")
-                continue
-
+            if user_input.startswith("/"):
+                result = await dispatch(ctx, user_input)
+                if result.consumed:
+                    continue
+                # 如果没消费，也走 agent
             print("\nagent > ", end="", flush=True)
             async for chunk in agent.run_stream(user_input):
                 print(chunk, end="", flush=True)
