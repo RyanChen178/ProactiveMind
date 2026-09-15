@@ -26,8 +26,9 @@ from mind.extensions.lifecycle import TurnContext, invoke_hooks
 from events import EventHub, TurnCompleted
 from initiative.presence import PresenceStore
 from extensions.manager import ExtensionManager
+from core.diagnostics import bind_context, get_logger, trace_span
 
-log = logging.getLogger(__name__)
+log = get_logger(__name__)
 
 
 class TurnInterruptedError(RuntimeError):
@@ -131,77 +132,116 @@ class MindLoop:
     async def run(self, user_input: str, max_steps: int = 10) -> str:
         """执行一轮对话：用户输入 → 可能多轮工具调用 → 最终回复。"""
 
-        self._session.add_user(user_input)
-
-        # 生命周期钩子：before_turn
-        turn_context = TurnContext(
-            session_id=self._session_id,
-            user_message=user_input
-        )
-        await invoke_hooks("before_turn", turn_context)
-        
-        # 如果 before_turn 钩子要求跳过，直接返回
-        if turn_context.should_skip:
-            return turn_context.skip_reason
-        if self._presence is not None:
-            self._presence.record_user_message()
-
-        start = time.monotonic()
-        total_usage: dict[str, int] = {}
-        tool_names: list[str] = []
-
-        for _step in range(max_steps):
-            # 生命周期钩子：before_reasoning
-            await invoke_hooks("before_reasoning", turn_context)
-            
-            messages = await self._build_messages(turn_context)
-            response = await self._provider.chat(
-                messages, tools=self._tools.get_schemas()
+        with trace_span(
+            "mind_loop.run",
+            session=self._session_id,
+            action="turn_start",
+        ):
+            log.info(
+                "turn started",
+                extra={"event": "turn_started", "action": "turn_start"},
             )
-            _merge_usage(total_usage, response.usage)
-            
-            # 生命周期钩子：after_reasoning
-            await invoke_hooks("after_reasoning", turn_context)
+            self._session.add_user(user_input)
 
-            # 没有 tool_calls → 最终回复
-            if not response.tool_calls:
-                self._session.add_assistant(response.content)
-                await self._emit_turn_committed(user_input, response.content)
-                latency_ms = (time.monotonic() - start) * 1000
-                self._stats.record(
-                    session_id=self._session_id,
-                    user_input=user_input,
-                    assistant_reply=response.content,
-                    tool_calls=tool_names,
-                    usage=total_usage,
-                    latency_ms=latency_ms,
+            # 生命周期钩子：before_turn
+            turn_context = TurnContext(
+                session_id=self._session_id,
+                user_message=user_input
+            )
+            await invoke_hooks("before_turn", turn_context)
+
+            # 如果 before_turn 钩子要求跳过，直接返回
+            if turn_context.should_skip:
+                log.info("turn skipped by before_turn hook")
+                return turn_context.skip_reason
+            if self._presence is not None:
+                self._presence.record_user_message()
+
+            start = time.monotonic()
+            total_usage: dict[str, int] = {}
+            tool_names: list[str] = []
+
+            for _step in range(max_steps):
+                # 生命周期钩子：before_reasoning
+                await invoke_hooks("before_reasoning", turn_context)
+
+                messages = await self._build_messages(turn_context)
+                response = await self._provider.chat(
+                    messages, tools=self._tools.get_schemas()
                 )
-                
-                # 生命周期钩子：after_turn
-                await invoke_hooks("after_turn", turn_context)
-                
-                return response.content
+                _merge_usage(total_usage, response.usage)
 
-            # 有 tool_calls → 执行工具后继续循环
-            tool_names.extend(c.name for c in response.tool_calls)
-            await self._execute_tool_calls(response)
+                # 生命周期钩子：after_reasoning
+                await invoke_hooks("after_reasoning", turn_context)
 
-        message = "（达到最大工具调用次数，终止本轮）"
-        self._session.add_assistant(message)
-        latency_ms = (time.monotonic() - start) * 1000
-        self._stats.record(
-            session_id=self._session_id,
-            user_input=user_input,
-            assistant_reply=message,
-            tool_calls=tool_names,
-            usage=total_usage,
-            latency_ms=latency_ms,
-        )
-        
-        # 生命周期钩子：after_turn
-        await invoke_hooks("after_turn", turn_context)
-        
-        return message
+                # 没有 tool_calls → 最终回复
+                if not response.tool_calls:
+                    self._session.add_assistant(response.content)
+                    await self._emit_turn_committed(user_input, response.content)
+                    latency_ms = (time.monotonic() - start) * 1000
+                    self._stats.record(
+                        session_id=self._session_id,
+                        user_input=user_input,
+                        assistant_reply=response.content,
+                        tool_calls=tool_names,
+                        usage=total_usage,
+                        latency_ms=latency_ms,
+                    )
+
+                    # 生命周期钩子：after_turn
+                    await invoke_hooks("after_turn", turn_context)
+                    log.info(
+                        "turn finished",
+                        extra={
+                            "event": "turn_finished",
+                            "step_count": _step + 1,
+                            "tool_count": len(tool_names),
+                            "latency_ms": round(latency_ms, 2),
+                            "action": "respond",
+                        },
+                    )
+
+                    return response.content
+
+                # 有 tool_calls → 执行工具后继续循环
+                tool_names.extend(c.name for c in response.tool_calls)
+                with bind_context(event="tool_execution", counts=len(response.tool_calls)):
+                    log.info(
+                        f"executing {len(response.tool_calls)} tool call(s)",
+                        extra={
+                            "event": "tool_calls",
+                            "action": "tool_execute",
+                            "counts": len(response.tool_calls),
+                        },
+                    )
+                    await self._execute_tool_calls(response)
+
+            message = "（达到最大工具调用次数，终止本轮）"
+            self._session.add_assistant(message)
+            latency_ms = (time.monotonic() - start) * 1000
+            self._stats.record(
+                session_id=self._session_id,
+                user_input=user_input,
+                assistant_reply=message,
+                tool_calls=tool_names,
+                usage=total_usage,
+                latency_ms=latency_ms,
+            )
+
+            # 生命周期钩子：after_turn
+            await invoke_hooks("after_turn", turn_context)
+            log.info(
+                "turn finished with max steps",
+                extra={
+                    "event": "turn_finished",
+                    "step_count": max_steps,
+                    "tool_count": len(tool_names),
+                    "latency_ms": round(latency_ms, 2),
+                    "action": "max_steps",
+                },
+            )
+
+            return message
 
     async def run_stream(
         self, user_input: str, max_steps: int = 10
