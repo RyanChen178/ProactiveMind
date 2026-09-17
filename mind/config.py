@@ -52,6 +52,17 @@ class ConsolidationConfig:
 
 
 @dataclass
+class McpServerConfig:
+    """单个 MCP server 的启动配置。"""
+
+    name: str
+    command: str | list[str]
+    env: dict[str, str] = field(default_factory=dict)
+    cwd: str | None = None
+    enabled: bool = True
+
+
+@dataclass
 class Config:
     runtimes: RuntimeRegistry
     workspace: Path
@@ -64,6 +75,7 @@ class Config:
         default_factory=ConsolidationConfig
     )
     extensions_dir: Path | None = None
+    mcp_servers: dict[str, McpServerConfig] = field(default_factory=dict)
 
     @property
     def llm(self) -> LLMConfig:
@@ -151,6 +163,8 @@ def load_config(path: str = "config.toml") -> Config:
         else None
     )
 
+    mcp_servers = _parse_mcp_servers(data.get("mcp") or {})
+
     return Config(
         runtimes=runtimes,
         workspace=Path(workspace_str).expanduser().resolve(),
@@ -166,7 +180,44 @@ def load_config(path: str = "config.toml") -> Config:
             enabled=consolidation_enabled
         ),
         extensions_dir=extensions_dir,
+        mcp_servers=mcp_servers,
     )
+
+
+def _parse_mcp_servers(mcp_section: dict) -> dict[str, McpServerConfig]:
+    """解析 [mcp.servers.<name>] 配置段。
+
+    格式：
+      [mcp.servers.fetch]
+      command = "uvx mcp-server-fetch"        # 字符串或数组
+      enabled = true                          # 可选，默认 true
+      [mcp.servers.fetch.env]                 # 可选环境变量
+      FETCH_TIMEOUT = "30"
+    """
+    servers_raw = mcp_section.get("servers") or {}
+    if not isinstance(servers_raw, dict):
+        raise ValueError("[mcp].servers 必须是表")
+
+    servers: dict[str, McpServerConfig] = {}
+    for name, body in servers_raw.items():
+        if not isinstance(body, dict):
+            raise ValueError(f"[mcp.servers.{name}] 必须是表")
+        command = body.get("command")
+        if isinstance(command, list):
+            command = [str(a) for a in command]
+        elif not isinstance(command, str) or not command.strip():
+            raise ValueError(f"[mcp.servers.{name}].command 必须是非空字符串或数组")
+        env_raw = body.get("env") or {}
+        if not isinstance(env_raw, dict):
+            raise ValueError(f"[mcp.servers.{name}].env 必须是表")
+        servers[name] = McpServerConfig(
+            name=name,
+            command=command,
+            env={str(k): str(v) for k, v in env_raw.items()},
+            cwd=body.get("cwd"),
+            enabled=bool(body.get("enabled", True)),
+        )
+    return servers
 
 
 def _infer_provider(base_url: str) -> str:

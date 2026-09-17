@@ -98,9 +98,59 @@ class MindLoop:
         self._stats = TurnStats()
         self._active_token: _InterruptToken | None = None
         self._active_task: asyncio.Task | None = None
+        self._mcp_registry = self._build_mcp_registry()
         self._load_extensions()
         self._register_bus_handlers()
         self._refresh_system_prompt()
+
+    def _build_mcp_registry(self) -> "McpRegistry | None":
+        """根据配置构造 McpRegistry（只注册，不启动子进程）。"""
+        servers = getattr(self._config, "mcp_servers", None) or {}
+        enabled = [c for c in servers.values() if c.enabled]
+        if not enabled:
+            return None
+        from mind.mcp import McpRegistry
+
+        registry = McpRegistry()
+        for server in enabled:
+            registry.add(
+                server.name,
+                server.command,
+                env=server.env or None,
+                cwd=server.cwd,
+            )
+        return registry
+
+    async def setup_mcp(self) -> int:
+        """启动所有 MCP server 并把远端工具注册到 ToolRegistry。
+
+        单个 server 失败不影响其它 server，只记录日志。
+
+        Returns:
+            成功注册的远端工具数量。
+        """
+        if self._mcp_registry is None:
+            return 0
+        registered = 0
+        for name, client in list(self._mcp_registry._clients.items()):
+            try:
+                await client.connect()
+            except Exception as exc:
+                log.warning("MCP server %s 连接失败，跳过: %s", name, exc)
+                continue
+        for wrapper in self._mcp_registry.collect_tools():
+            self._tools.register(wrapper)  # type: ignore[arg-type]
+            registered += 1
+        if registered:
+            log.info(
+                "MCP 工具已注册",
+                extra={"event": "mcp_tools_registered", "counts": registered},
+            )
+        return registered
+
+    @property
+    def mcp_registry(self) -> "McpRegistry | None":
+        return self._mcp_registry
 
     @property
     def stats(self) -> TurnStats:
@@ -524,6 +574,8 @@ class MindLoop:
             await self._bus.drain()
             if self._extension_manager is not None:
                 await self._extension_manager.unload_all()
+            if self._mcp_registry is not None:
+                await self._mcp_registry.close_all()
             await self._provider.aclose()
         finally:
             self._session_store.close()

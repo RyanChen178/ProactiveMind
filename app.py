@@ -37,13 +37,24 @@ def _build_agent():
 
     proactive_loop = InitiativeLoop(
         presence,
-        is_passive_busy=lambda: False,
+        is_passive_busy=agent.is_busy,
     )
     return agent, bus, presence, proactive_loop
 
 
+async def _setup_mcp_quietly(agent: MindLoop) -> None:
+    """启动配置中的 MCP server；失败不阻断主流程。"""
+    try:
+        count = await agent.setup_mcp()
+        if count:
+            print(f"（已加载 {count} 个 MCP 工具）")
+    except Exception as exc:
+        print(f"（MCP 加载失败: {exc}）")
+
+
 async def chat_repl() -> None:
     agent, bus, presence, proactive_loop = _build_agent()
+    await _setup_mcp_quietly(agent)
     proactive_task = asyncio.create_task(proactive_loop.run())
 
     print("ProactiveMind — 输入消息开始对话，/help 查看命令，Ctrl+C 退出\n")
@@ -109,6 +120,7 @@ async def web_server() -> None:
     from mind.health import create_health_checker
 
     agent, bus, presence, proactive_loop = _build_agent()
+    await _setup_mcp_quietly(agent)
 
     cm = SocketHub()
     proactive_loop._push_callback = cm.broadcast
@@ -151,6 +163,7 @@ async def telegram_gateway() -> None:
     agent = MindLoop(config, bus=bus, presence=presence)
 
     try:
+        await _setup_mcp_quietly(agent)
         await run_telegram_gateway(agent, config)
     finally:
         await agent.aclose()

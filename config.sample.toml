@@ -80,6 +80,21 @@ enabled = true
 dir = "extensions"
 
 # =============================================================================
+# MCP (Model Context Protocol) 外部工具服务器
+# 配置的 server 会在启动时自动拉起，工具以 mcp_<name>__<tool> 命名注册
+# =============================================================================
+
+# [mcp.servers.fetch]
+# command = "uvx mcp-server-fetch"
+# enabled = true
+
+# [mcp.servers.filesystem]
+# command = ["npx", "-y", "@modelcontextprotocol/server-filesystem", "/tmp"]
+
+# [mcp.servers.fetch.env]
+# FETCH_TIMEOUT = "30"
+
+# =============================================================================
 # 提示词
 # =============================================================================
 
