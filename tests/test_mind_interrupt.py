@@ -141,7 +141,9 @@ class RunStreamInterruptTest(unittest.IsolatedAsyncioTestCase):
 
     async def test_interrupt_during_stream_raises(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
-            provider = _FakeStreamProvider(["Hello", " ", "world"], max_iters=100)
+            # 100 个 chunk × 0.02s ≈ 2s，远大于 0.05s 的中断延迟，
+            # 避免定时器精度导致 stream 先于中断结束
+            provider = _FakeStreamProvider([f"c{i} " for i in range(100)])
             loop = _make_mind_loop(Path(temp_dir), provider)
 
             # 后台 task：0.05s 后发起中断
