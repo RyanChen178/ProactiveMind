@@ -5,6 +5,7 @@
   python main.py web         —— Web Chat（http://127.0.0.1:6322）
   python main.py telegram    —— Telegram Bot 渠道
   python main.py dashboard   —— Dashboard 调试入口
+  python main.py control     —— Agent Control Protocol 服务端（127.0.0.1:6324）
   python main.py setup       —— 交互式配置向导（生成 config.toml）
   python main.py supervise MODE —— Supervisor 模式托管 gateway
 """
@@ -231,6 +232,27 @@ async def dashboard_server() -> None:
         presence.close()
 
 
+async def control_server_entry() -> None:
+    """启动 Agent Control Protocol 服务端（默认 127.0.0.1:6324）。"""
+    from gateways.control_server import ControlServer
+
+    agent, bus, presence, _ = _build_agent()
+    await _setup_mcp_quietly(agent)
+
+    server = ControlServer(agent, host="127.0.0.1", port=6324)
+    port = await server.start()
+    print(f"ProactiveMind Control — 127.0.0.1:{port}（JSON-RPC over TCP）")
+    try:
+        await asyncio.Event().wait()
+    except asyncio.CancelledError:
+        pass
+    finally:
+        await server.stop()
+        await agent.aclose()
+        await bus.aclose()
+        presence.close()
+
+
 def _parse_setup_args(args: list[str]) -> dict[str, str | bool]:
     """解析 setup 命令行参数为 dict。"""
     parsed: dict[str, str | bool] = {}
@@ -275,6 +297,8 @@ if __name__ == "__main__":
         asyncio.run(telegram_gateway())
     elif mode == "dashboard":
         asyncio.run(dashboard_server())
+    elif mode == "control":
+        asyncio.run(control_server_entry())
     elif mode == "setup":
         run_setup_cli(sys.argv[2:])
     elif mode == "supervise":
