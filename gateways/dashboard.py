@@ -254,6 +254,39 @@ def create_dashboard_app(
         promoted = agent._memory.promote_pending()
         return {"promoted": len(promoted), "facts": promoted}
 
+    @app.get("/api/tools")
+    async def tools() -> dict:
+        """当前注册到 ToolRegistry 的全部工具。"""
+        schemas = agent._tools.get_schemas()
+        items = [
+            {
+                "name": s["function"]["name"],
+                "description": s["function"].get("description", ""),
+                "source": "mcp" if s["function"]["name"].startswith("mcp_") else "builtin",
+            }
+            for s in schemas
+        ]
+        return {"total": len(items), "tools": items}
+
+    @app.get("/api/mcp")
+    async def mcp() -> dict:
+        """MCP server 连接状态与暴露的工具。"""
+        registry = getattr(agent, "_mcp_registry", None)
+        if registry is None:
+            return {"enabled": False, "servers": []}
+        servers = []
+        for name, client in registry._clients.items():
+            servers.append({
+                "name": name,
+                "connected": client.is_connected,
+                "tool_count": len(client.tools) if client.is_connected else 0,
+                "tools": [
+                    {"name": t.name, "description": t.description}
+                    for t in client.tools
+                ] if client.is_connected else [],
+            })
+        return {"enabled": True, "servers": servers}
+
     return app
 
 

@@ -5,6 +5,7 @@ from __future__ import annotations
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
 from gateways.dashboard import (
@@ -97,6 +98,39 @@ class _FakeSessionStore:
         ]
 
 
+class _FakeTools:
+    def get_schemas(self) -> list[dict]:
+        return [
+            {
+                "type": "function",
+                "function": {
+                    "name": "recall",
+                    "description": "检索记忆",
+                    "parameters": {"type": "object", "properties": {}},
+                },
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "mcp_fake__echo",
+                    "description": "[MCP:fake] 回显",
+                    "parameters": {"type": "object", "properties": {}},
+                },
+            },
+        ]
+
+
+class _FakeMcpClient:
+    def __init__(self, connected: bool, tools: list) -> None:
+        self.is_connected = connected
+        self.tools = tools
+
+
+class _FakeMcpRegistry:
+    def __init__(self, clients: dict) -> None:
+        self._clients = clients
+
+
 class _FakeAgent:
     def __init__(self):
         self._session_id = "test-session-1"
@@ -115,6 +149,16 @@ class _FakeAgent:
                 "avg_latency_ms": 456.7,
         })
         self._session_store = _FakeSessionStore()
+        self._tools = _FakeTools()
+        self._mcp_registry = _FakeMcpRegistry({
+            "fake": _FakeMcpClient(
+                connected=True,
+                tools=[
+                    SimpleNamespace(name="echo", description="回显"),
+                ],
+            ),
+            "down": _FakeMcpClient(connected=False, tools=[]),
+        })
 
 
 class DashboardEndpointsTest(unittest.IsolatedAsyncioTestCase):
@@ -220,6 +264,38 @@ class DashboardEndpointsTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(data["facts"]), 2)
         # agent._memory.promote_pending 应被调用
         self.assertEqual(agent._memory.promote_pending_called, 1)
+
+    async def test_api_tools_lists_builtin_and_mcp(self) -> None:
+        app, _, _ = self._make_app()
+        client = _make_async_client(app)
+        resp = await client.get("/api/tools")
+        data = resp.json()
+        self.assertEqual(data["total"], 2)
+        by_name = {t["name"]: t for t in data["tools"]}
+        self.assertEqual(by_name["recall"]["source"], "builtin")
+        self.assertEqual(by_name["mcp_fake__echo"]["source"], "mcp")
+
+    async def test_api_mcp_reports_server_status(self) -> None:
+        app, _, _ = self._make_app()
+        client = _make_async_client(app)
+        resp = await client.get("/api/mcp")
+        data = resp.json()
+        self.assertTrue(data["enabled"])
+        by_name = {s["name"]: s for s in data["servers"]}
+        self.assertTrue(by_name["fake"]["connected"])
+        self.assertEqual(by_name["fake"]["tool_count"], 1)
+        self.assertEqual(by_name["fake"]["tools"][0]["name"], "echo")
+        self.assertFalse(by_name["down"]["connected"])
+        self.assertEqual(by_name["down"]["tools"], [])
+
+    async def test_api_mcp_disabled_when_no_registry(self) -> None:
+        app, agent, _ = self._make_app()
+        agent._mcp_registry = None
+        client = _make_async_client(app)
+        resp = await client.get("/api/mcp")
+        data = resp.json()
+        self.assertFalse(data["enabled"])
+        self.assertEqual(data["servers"], [])
 
 
 def _make_async_client(app):
