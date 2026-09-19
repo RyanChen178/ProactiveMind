@@ -211,4 +211,24 @@ def build_core_tools(
         )
     )
 
+    from mind.web_fetch import _tool_web_fetch
+
+    registry.register(
+        Tool(
+            name="web_fetch",
+            description="抓取网页 URL 并返回纯文本内容，用于阅读网页/文档。",
+            parameters={
+                "type": "object",
+                "properties": {
+                    "url": {
+                        "type": "string",
+                        "description": "要抓取的 http/https URL",
+                    }
+                },
+                "required": ["url"],
+            },
+            func=_tool_web_fetch,
+        )
+    )
+
     return registry
