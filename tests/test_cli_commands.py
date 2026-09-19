@@ -358,6 +358,103 @@ class DispatchTest(unittest.TestCase):
         self.assertFalse(result.handled)
 
 
+class _FakeToolsRegistry:
+    def get_schemas(self) -> list[dict]:
+        return [
+            {
+                "type": "function",
+                "function": {
+                    "name": "recall",
+                    "description": "检索记忆",
+                    "parameters": {"type": "object", "properties": {}},
+                },
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "mcp_fake__echo",
+                    "description": "远端回显",
+                    "parameters": {"type": "object", "properties": {}},
+                },
+            },
+        ]
+
+
+class _FakeMcpToolInfo:
+    def __init__(self, name: str, description: str) -> None:
+        self.name = name
+        self.description = description
+
+
+class _FakeMcpClientState:
+    def __init__(self, connected: bool, tools: list) -> None:
+        self.is_connected = connected
+        self.tools = tools
+
+
+class _FakeMcpRegistryState:
+    def __init__(self, clients: dict) -> None:
+        self._clients = clients
+
+
+class ToolsCommandTest(unittest.TestCase):
+    """CLI /tools 命令。"""
+
+    def test_lists_tools_with_source(self) -> None:
+        agent = _FakeAgent()
+        agent._tools = _FakeToolsRegistry()
+        ctx = _CollectingContext(agent=agent)
+        _run(dispatch(ctx, "/tools"))
+        text = "\n".join(ctx.output_lines)
+        self.assertIn("共 2 个工具", text)
+        self.assertIn("[内置] recall", text)
+        self.assertIn("[MCP] mcp_fake__echo", text)
+
+    def test_tools_unavailable(self) -> None:
+        agent = _FakeAgent()
+        agent._tools = None
+        ctx = _CollectingContext(agent=agent)
+        _run(dispatch(ctx, "/tools"))
+        self.assertIn("不可用", ctx.output_lines[0])
+
+    def test_tools_registered_in_help(self) -> None:
+        cmds = known_commands()
+        self.assertIn("tools", cmds)
+        self.assertIn("mcp", cmds)
+
+
+class McpCommandTest(unittest.TestCase):
+    """CLI /mcp 命令。"""
+
+    def test_reports_server_status(self) -> None:
+        agent = _FakeAgent()
+        agent._mcp_registry = _FakeMcpRegistryState({
+            "fake": _FakeMcpClientState(True, [_FakeMcpToolInfo("echo", "回显")]),
+            "down": _FakeMcpClientState(False, []),
+        })
+        ctx = _CollectingContext(agent=agent)
+        _run(dispatch(ctx, "/mcp"))
+        text = "\n".join(ctx.output_lines)
+        self.assertIn("fake [已连接]", text)
+        self.assertIn("mcp_fake__echo", text)
+        self.assertIn("down [未连接]", text)
+        self.assertIn("共 2 个 server，1 个已连接", text)
+
+    def test_mcp_not_configured(self) -> None:
+        agent = _FakeAgent()
+        agent._mcp_registry = None
+        ctx = _CollectingContext(agent=agent)
+        _run(dispatch(ctx, "/mcp"))
+        self.assertIn("未配置", ctx.output_lines[0])
+
+    def test_mcp_no_clients(self) -> None:
+        agent = _FakeAgent()
+        agent._mcp_registry = _FakeMcpRegistryState({})
+        ctx = _CollectingContext(agent=agent)
+        _run(dispatch(ctx, "/mcp"))
+        self.assertIn("未配置", ctx.output_lines[0])
+
+
 class RegisterDecoratorTest(unittest.TestCase):
     def test_register_adds_command(self) -> None:
         @register("test_cmd_xxx")

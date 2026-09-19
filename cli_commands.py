@@ -115,6 +115,8 @@ async def _cmd_help(ctx: CommandContext, args: list[str]) -> CommandResult:
         "  /memory            显示长期记忆片段",
         "  /search <query>    语义搜索长期记忆",
         "  /notes [tag]       列出笔记（按 tag 过滤）",
+        "  /tools             列出全部可用工具",
+        "  /mcp               查看 MCP server 状态",
         "  /stats             显示 turn 统计",
     ]
     ctx.output("\n".join(lines))
@@ -268,6 +270,51 @@ async def _cmd_notes(ctx: CommandContext, args: list[str]) -> CommandResult:
         for n in notes:
             tags = ",".join(n.get("tags", []))
             ctx.output(f"[{n['id']}] {n['content']}" + (f" # {tags}" if tags else ""))
+    return CommandResult(handled=True, consumed=True)
+
+
+@register("tools")
+async def _cmd_tools(ctx: CommandContext, args: list[str]) -> CommandResult:
+    """列出 Agent 当前可用的全部工具。"""
+    tools = getattr(ctx.agent, "_tools", None)
+    if tools is None:
+        ctx.output("（工具注册表不可用）")
+        return CommandResult(handled=True, consumed=True)
+    schemas = tools.get_schemas()
+    if not schemas:
+        ctx.output("（没有注册任何工具）")
+        return CommandResult(handled=True, consumed=True)
+    ctx.output(f"共 {len(schemas)} 个工具：")
+    for s in schemas:
+        func = s.get("function", {})
+        name = func.get("name", "?")
+        desc = func.get("description", "")
+        source = "MCP" if name.startswith("mcp_") else "内置"
+        ctx.output(f"  [{source}] {name} — {desc}")
+    return CommandResult(handled=True, consumed=True)
+
+
+@register("mcp")
+async def _cmd_mcp(ctx: CommandContext, args: list[str]) -> CommandResult:
+    """查看 MCP server 连接状态与工具清单。"""
+    registry = getattr(ctx.agent, "_mcp_registry", None)
+    if registry is None:
+        ctx.output("（未配置 MCP server）")
+        return CommandResult(handled=True, consumed=True)
+    clients = getattr(registry, "_clients", {})
+    if not clients:
+        ctx.output("（未配置 MCP server）")
+        return CommandResult(handled=True, consumed=True)
+    connected = 0
+    for name, client in clients.items():
+        status = "已连接" if client.is_connected else "未连接"
+        if client.is_connected:
+            connected += 1
+        ctx.output(f"  {name} [{status}]")
+        for tool in client.tools:
+            desc = getattr(tool, "description", "") or ""
+            ctx.output(f"    - mcp_{name}__{tool.name}  {desc[:60]}")
+    ctx.output(f"共 {len(clients)} 个 server，{connected} 个已连接")
     return CommandResult(handled=True, consumed=True)
 
 
