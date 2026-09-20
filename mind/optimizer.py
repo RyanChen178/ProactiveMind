@@ -241,8 +241,8 @@ class MemoryOptimizerLoop:
             
      
 
-            # Sleep until next tick
-            await asyncio.sleep(secs)
+            # 分片睡眠，让 stop() 在 0.5s 内生效而不必等完整个 interval
+            await self._interruptible_sleep(secs)
             
             if not self._running:
                 break
@@ -259,3 +259,23 @@ class MemoryOptimizerLoop:
         now = self._now_fn()
         # Align to interval boundaries
         return self._interval - (now.timestamp() % self._interval)
+
+    def stop(self) -> None:
+        """请求停止循环（分片睡眠在 0.5s 内退出）。"""
+        self._running = False
+
+    async def _interruptible_sleep(self, seconds: float) -> None:
+        """按 0.5s 分片睡眠，期间可被 stop() 打断。
+
+        至少让出一次控制权，避免 secs=0 时形成独占事件循环的紧循环。
+        """
+        loop = asyncio.get_running_loop()
+        deadline = loop.time() + max(0.0, seconds)
+        while self._running and loop.time() < deadline:
+            await asyncio.sleep(min(0.5, deadline - loop.time()))
+        else:
+            await asyncio.sleep(0)
+
+    @property
+    def is_running(self) -> bool:
+        return self._running

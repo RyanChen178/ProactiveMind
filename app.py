@@ -53,9 +53,15 @@ async def _setup_mcp_quietly(agent: MindLoop) -> None:
         print(f"（MCP 加载失败: {exc}）")
 
 
+def _start_background(agent: MindLoop) -> None:
+    """启动 Agent 后台任务（PENDING.md 定时归档）。"""
+    agent.start_optimizer_loop()
+
+
 async def chat_repl() -> None:
     agent, bus, presence, proactive_loop = _build_agent()
     await _setup_mcp_quietly(agent)
+    _start_background(agent)
     proactive_task = asyncio.create_task(proactive_loop.run())
 
     print("ProactiveMind — 输入消息开始对话，/help 查看命令，Ctrl+C 退出\n")
@@ -122,6 +128,7 @@ async def web_server() -> None:
 
     agent, bus, presence, proactive_loop = _build_agent()
     await _setup_mcp_quietly(agent)
+    _start_background(agent)
 
     cm = SocketHub()
     proactive_loop._push_callback = cm.broadcast
@@ -165,6 +172,7 @@ async def telegram_gateway() -> None:
 
     try:
         await _setup_mcp_quietly(agent)
+        _start_background(agent)
         await run_telegram_gateway(agent, config)
     finally:
         await agent.aclose()
@@ -238,6 +246,7 @@ async def control_server_entry() -> None:
 
     agent, bus, presence, _ = _build_agent()
     await _setup_mcp_quietly(agent)
+    _start_background(agent)
 
     server = ControlServer(agent, host="127.0.0.1", port=6324)
     port = await server.start()

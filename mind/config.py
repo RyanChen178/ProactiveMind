@@ -49,6 +49,7 @@ class PromptConfig:
 @dataclass
 class ConsolidationConfig:
     enabled: bool = True
+    optimizer_interval_seconds: int = 64800  # 18 小时
 
 
 @dataclass
@@ -177,7 +178,10 @@ def load_config(path: str = "config.toml") -> Config:
             rules=rules,
         ),
         consolidation=ConsolidationConfig(
-            enabled=consolidation_enabled
+            enabled=consolidation_enabled,
+            optimizer_interval_seconds=int(
+                consolidation_section.get("optimizer_interval_seconds", 64800)
+            ),
         ),
         extensions_dir=extensions_dir,
         mcp_servers=mcp_servers,

@@ -99,9 +99,34 @@ class MindLoop:
         self._active_token: _InterruptToken | None = None
         self._active_task: asyncio.Task | None = None
         self._mcp_registry = self._build_mcp_registry()
+        from mind.optimizer import MemoryOptimizer, MemoryOptimizerLoop
+
+        consolidation = getattr(self._config, "consolidation", None)
+        raw_interval = getattr(consolidation, "optimizer_interval_seconds", 64800)
+        interval = raw_interval if isinstance(raw_interval, int) and raw_interval > 0 else 64800
+        self._optimizer = MemoryOptimizer(config.workspace)
+        self._optimizer_loop = MemoryOptimizerLoop(self._optimizer, interval_seconds=interval)
+        self._optimizer_task: asyncio.Task | None = None
         self._load_extensions()
         self._register_bus_handlers()
         self._refresh_system_prompt()
+
+    def start_optimizer_loop(self) -> asyncio.Task:
+        """启动 PENDING.md 定时归档后台循环（幂等）。"""
+        if self._optimizer_task is not None and not self._optimizer_task.done():
+            return self._optimizer_task
+        self._optimizer_task = asyncio.create_task(
+            self._optimizer_loop.run(), name="memory-optimizer-loop"
+        )
+        return self._optimizer_task
+
+    async def run_optimizer_now(self) -> int:
+        """立即执行一轮归档，返回归档条数。"""
+        return await self._optimizer.optimize()
+
+    @property
+    def optimizer(self) -> "MemoryOptimizer":
+        return self._optimizer
 
     def _build_mcp_registry(self) -> "McpRegistry | None":
         """根据配置构造 McpRegistry（只注册，不启动子进程）。"""
@@ -576,6 +601,13 @@ class MindLoop:
                 await self._extension_manager.unload_all()
             if self._mcp_registry is not None:
                 await self._mcp_registry.close_all()
+            if self._optimizer_task is not None and not self._optimizer_task.done():
+                self._optimizer_loop.stop()
+                self._optimizer_task.cancel()
+                try:
+                    await self._optimizer_task
+                except (asyncio.CancelledError, Exception):
+                    pass
             await self._provider.aclose()
         finally:
             self._session_store.close()

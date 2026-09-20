@@ -110,6 +110,7 @@ async def _cmd_help(ctx: CommandContext, args: list[str]) -> CommandResult:
         "  /clear 或 /reset   新建会话",
         "  /pending           列出待归档记忆",
         "  /promote           提升待归档记忆",
+        "  /optimize          立即执行一轮记忆归档",
         "  /skills            列出后台 playbook",
         "  /skill <name>      手动触发某个 playbook",
         "  /memory            显示长期记忆片段",
@@ -149,6 +150,21 @@ async def _cmd_promote(ctx: CommandContext, args: list[str]) -> CommandResult:
         ctx.output("（没有新的候选记忆可提升）")
     else:
         ctx.output(f"（已提升 {len(facts)} 条候选记忆）")
+    return CommandResult(handled=True, consumed=True)
+
+
+@register("optimize")
+async def _cmd_optimize(ctx: CommandContext, args: list[str]) -> CommandResult:
+    """立即执行一轮 PENDING.md 归档（质量过滤 + 去重后并入 MEMORY.md）。"""
+    run_now = getattr(ctx.agent, "run_optimizer_now", None)
+    if run_now is None:
+        ctx.output("（优化器不可用）")
+        return CommandResult(handled=True, consumed=True)
+    archived = await run_now()
+    if archived:
+        ctx.output(f"（已归档 {archived} 条候选记忆到长期记忆）")
+    else:
+        ctx.output("（本轮没有可归档的候选记忆）")
     return CommandResult(handled=True, consumed=True)
 
 
