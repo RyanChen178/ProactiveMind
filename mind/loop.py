@@ -107,9 +107,34 @@ class MindLoop:
         self._optimizer = MemoryOptimizer(config.workspace)
         self._optimizer_loop = MemoryOptimizerLoop(self._optimizer, interval_seconds=interval)
         self._optimizer_task: asyncio.Task | None = None
+
+        # 语义记忆：本地 TF-IDF backend + SQLite 向量缓存，挂到 MemoryStore
+        from mind.embeddings import EmbeddingStore, LocalTFIDFBackend
+
+        embedding_backend = LocalTFIDFBackend()
+        embedding_backend.fit(self._collect_memory_corpus())
+        self._embedding_store = EmbeddingStore(
+            embedding_backend, config.workspace / "embeddings.db"
+        )
+        self._memory.attach_embedding_store(self._embedding_store)
+
+        # Self.md 自我模型：读取后注入系统提示词
+        from initiative.self_model import SelfModelManager
+
+        self._self_model = SelfModelManager(config.workspace)
         self._load_extensions()
         self._register_bus_handlers()
         self._refresh_system_prompt()
+
+    def _collect_memory_corpus(self) -> list[str]:
+        """收集用于 embedding fit 的语料（长期记忆 + 待归档候选）。"""
+        corpus: list[str] = []
+        for line in self._memory.read_all().splitlines():
+            line = line.strip()
+            if line.startswith("- ") and line[2:].strip():
+                corpus.append(line[2:].strip())
+        corpus.extend(f for f in self._memory.read_pending() if f.strip())
+        return corpus
 
     def start_optimizer_loop(self) -> asyncio.Task:
         """启动 PENDING.md 定时归档后台循环（幂等）。"""
@@ -567,10 +592,19 @@ class MindLoop:
         return facts
 
     def _refresh_system_prompt(self) -> None:
-        """用最新长期记忆重建系统提示词。"""
+        """用最新长期记忆与自我认知重建系统提示词。"""
 
         memory_text = self._memory.read_all().strip()
-        self._system_prompt = PromptBuilder(self._config.prompt).build(memory_text)
+        self_text = ""
+        self_model = getattr(self, "_self_model", None)
+        if self_model is not None:
+            try:
+                self_text = self_model.load().to_markdown().strip()
+            except Exception as exc:
+                log.warning("Self.md 加载失败，跳过注入: %s", exc)
+        self._system_prompt = PromptBuilder(self._config.prompt).build(
+            memory_text, self_text=self_text
+        )
         self._refresh_vector_store()
 
     def _refresh_vector_store(self) -> None:

@@ -17,7 +17,7 @@ class PromptBuilder:
     def __init__(self, config: PromptConfig) -> None:
         self._config = config
 
-    def build(self, memory_text: str = "") -> str:
+    def build(self, memory_text: str = "", self_text: str = "") -> str:
         """按固定顺序输出各个提示词区块。"""
 
         blocks = [
@@ -27,6 +27,8 @@ class PromptBuilder:
             ),
             f"## 工具说明\n{TOOL_GUIDE}",
         ]
+        if self_text.strip():
+            blocks.append(f"## 自我认知\n{self_text.strip()}")
         if memory_text.strip():
             blocks.append(f"## 已有记忆\n{memory_text.strip()}")
         return "\n\n".join(blocks)

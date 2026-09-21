@@ -47,9 +47,11 @@ class WanderLoop:
         self,
         provider: LLMProvider,
         skills_dir: Path,
+        self_model: "SelfModelManager | None" = None,
     ) -> None:
         self._provider = provider
         self._skills_dir = skills_dir
+        self._self_model = self_model
 
     def scan_playbooks(self) -> list[PlaybookEntry]:
         """扫描 skills 目录，返回所有包含 PLAYBOOK.md 的子目录。"""
@@ -131,6 +133,11 @@ class WanderLoop:
         )
 
         log.info("Drift 执行 skill=%s", skill.name)
+        if self._self_model is not None:
+            try:
+                self._self_model.update_from_drift(response.content[:500])
+            except Exception as exc:
+                log.warning("Self.md 更新失败，跳过: %s", exc)
         return WanderResult(
             action="executed",
             skill_name=skill.name,

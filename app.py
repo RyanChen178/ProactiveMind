@@ -36,9 +36,12 @@ def _build_agent():
     presence = PresenceStore(config.workspace / "presence.db")
     agent = MindLoop(config, bus=bus, presence=presence)
 
+    from initiative.data_sources import DataSourceManager
+
     proactive_loop = InitiativeLoop(
         presence,
         is_passive_busy=agent.is_busy,
+        data_source_manager=DataSourceManager(),
     )
     return agent, bus, presence, proactive_loop
 
