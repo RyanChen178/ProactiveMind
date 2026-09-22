@@ -64,6 +64,7 @@ def _start_background(agent: MindLoop) -> None:
 async def chat_repl() -> None:
     agent, bus, presence, proactive_loop = _build_agent()
     await _setup_mcp_quietly(agent)
+    agent.start_hot_reload()
     _start_background(agent)
     proactive_task = asyncio.create_task(proactive_loop.run())
 
@@ -131,6 +132,7 @@ async def web_server() -> None:
 
     agent, bus, presence, proactive_loop = _build_agent()
     await _setup_mcp_quietly(agent)
+    agent.start_hot_reload()
     _start_background(agent)
 
     cm = SocketHub()
@@ -175,6 +177,7 @@ async def telegram_gateway() -> None:
 
     try:
         await _setup_mcp_quietly(agent)
+        agent.start_hot_reload()
         _start_background(agent)
         await run_telegram_gateway(agent, config)
     finally:
@@ -249,6 +252,7 @@ async def control_server_entry() -> None:
 
     agent, bus, presence, _ = _build_agent()
     await _setup_mcp_quietly(agent)
+    agent.start_hot_reload()
     _start_background(agent)
 
     server = ControlServer(agent, host="127.0.0.1", port=6324)

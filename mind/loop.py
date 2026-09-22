@@ -619,7 +619,10 @@ class MindLoop:
             self._vector_store.rebuild(facts)
 
     def _load_extensions(self) -> None:
-        """加载配置中指定的插件目录，注册工具。"""
+        """加载配置中指定的插件目录，注册工具。
+
+        加载完后启动热重载监控（让新建/修改的扩展无需重启进程即生效）。
+        """
         extensions_dir = getattr(self._config, "extensions_dir", None)
         if extensions_dir is None or not extensions_dir.exists():
             return
@@ -627,6 +630,46 @@ class MindLoop:
         loaded = self._extension_manager.load_all(self._tools)
         if loaded:
             log.info("已加载 %d 个插件", len(loaded))
+
+        poll_interval = float(
+            getattr(self._config, "extensions_poll_interval", 2.0) or 0.0
+        )
+        if poll_interval <= 0:
+            return
+        from mind.extensions.hot_reload import init_hot_reloader
+
+        def _on_reload() -> None:
+            if self._extension_manager is None:
+                return
+            try:
+                self._extension_manager.load_all(self._tools)
+            except Exception as exc:
+                log.warning("热重载失败: %s", exc)
+
+        init_hot_reloader(
+            extensions_dir,
+            poll_interval=poll_interval,
+            on_reload=_on_reload,
+        )
+        self._hot_reloader = None  # 由 start_hot_reload() 在 async 上下文启动
+        self._hot_reloader_dir = extensions_dir
+        self._hot_reloader_poll = poll_interval
+
+    def start_hot_reload(self) -> None:
+        """在异步上下文启动热重载监控任务（必须在 event loop 内调用）。
+
+        分离构造与启动的原因：MindLoop.__init__ 是同步代码，无法直接
+        asyncio.create_task；上层入口（web/telegram/control/cli）拿到 agent
+        后应调用此方法。
+        """
+        reloader = getattr(self, "_hot_reloader", None)
+        if reloader is None or getattr(self, "_hot_reloader_dir", None) is None:
+            return
+        try:
+            reloader.start()
+            log.info("热重载监控已启动")
+        except RuntimeError as exc:
+            log.warning("热重载监控启动失败: %s", exc)
 
     async def aclose(self) -> None:
         try:
@@ -642,6 +685,9 @@ class MindLoop:
                     await self._optimizer_task
                 except (asyncio.CancelledError, Exception):
                     pass
+            reloader = getattr(self, "_hot_reloader", None)
+            if reloader is not None:
+                reloader.stop()
             await self._provider.aclose()
         finally:
             self._session_store.close()
