@@ -249,7 +249,6 @@ class Supervisor:
         log.info("Supervisor 终止子进程 pid=%s", self._child.pid)
         try:
             if sys.platform == "win32":
-                self._child.pid and subprocess.Popen  # noqa: B015
                 # 通过 CTRL_BREAK_EVENT（要求 CREATE_NEW_PROCESS_GROUP）
                 handle = getattr(self, "_popen_handle", None)
                 if handle is not None:

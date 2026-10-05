@@ -87,17 +87,31 @@ class TelegramBot:
         self._owns_http = http_client is None
 
         self._running = False
+        self._closed = False
         self._offset: int | None = None
         self._last_chat_id: int | None = None  # 主动推送目标
 
     async def aclose(self) -> None:
-        """关闭 HTTP 客户端。"""
+        """关闭网关资源（幂等，可在所属事件循环内重复调用）。
+
+        只关闭自己创建的 HTTP 客户端；外部注入的 client 由调用方管理，
+        避免跨所有权关闭。先停轮询循环再关连接，进行中的长轮询
+        会在本轮结束后感知 _running=False 退出。
+        """
+        if self._closed:
+            return
+        self._closed = True
         self._running = False
         if self._owns_http:
-            await self._http.aclose()
+            try:
+                await self._http.aclose()
+            except Exception:
+                pass
 
     async def _call(self, method: str, **params: Any) -> dict[str, Any]:
         """调用 Telegram Bot API 并返回 result 字段。"""
+        if self._closed:
+            return {"ok": False, "error": "gateway closed"}
         url = TELEGRAM_API_BASE.format(token=self._token, method=method)
         params = {k: v for k, v in params.items() if v is not None}
         try:
