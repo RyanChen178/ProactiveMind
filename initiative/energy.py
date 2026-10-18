@@ -68,3 +68,47 @@ def next_interval(
     base = interval_active_s if urgency > base_threshold else interval_idle_s
     offset = base * jitter * (random.random() * 2 - 1)
     return max(base + offset, 60.0)
+
+
+def d_energy(energy: float) -> float:
+    """互动饥渴度：energy 越低 → 饥渴度越高。
+
+    线性映射：D = 1 - energy，越界裁到 [0, 1]。
+    """
+    if energy < 0.0:
+        return 1.0
+    if energy > 1.0:
+        return 0.0
+    return 1.0 - energy
+
+
+def d_recent(msg_count: int, scale: float = 10.0) -> float:
+    """对话语境丰富度：近期消息越多 → 越丰富（接近 1）。
+
+    对数归一化：D = log(1 + k) / log(1 + scale)，上限 1。
+    scale=10 时参考：0→0.00, 5→0.59, 10→0.76, 20→0.92。
+    """
+    if msg_count <= 0 or scale <= 1.0:
+        return 0.0
+    return min(1.0, math.log1p(msg_count) / math.log1p(scale))
+
+
+def next_tick_from_score(
+    base_score: float,
+    *,
+    tick_s1: int = 2400,
+    tick_s0: int = 4800,
+    tick_jitter: float = 0.3,
+    threshold: float = 0.20,
+) -> int:
+    """根据 base_score 返回下一次 tick 的等待秒数（含随机抖动）。
+
+    base_score > threshold → 短间隔 (tick_s1)
+    base_score ≤ threshold → 长间隔 (tick_s0)
+    base_score 越高 → 间隔越短 → 单位时间内抽签次数越多 → 越快触发。
+    """
+    base = tick_s1 if base_score > threshold else tick_s0
+    if tick_jitter <= 0:
+        return base
+    offset = base * tick_jitter * (random.random() * 2 - 1)
+    return max(1, int(base + offset))
