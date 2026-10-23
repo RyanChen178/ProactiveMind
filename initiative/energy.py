@@ -12,14 +12,18 @@ from datetime import datetime, timedelta, timezone
 
 
 def compute_energy(
-    last_user_at: datetime, now: datetime | None = None
+    last_user_at: datetime | None, now: datetime | None = None
 ) -> float:
     """计算互动余温能量值。
 
     E(t) = 0.50·exp(-t/30min) + 0.35·exp(-t/240min) + 0.15·exp(-t/2880min)
 
     三段衰减分别对应短时余温、中时语境、长时关系连续性(48h)。
+    从未收到消息（None）时返回 0.0。
     """
+
+    if last_user_at is None:
+        return 0.0
 
     if now is None:
         now = datetime.now(timezone.utc)
