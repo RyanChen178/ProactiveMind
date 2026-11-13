@@ -77,6 +77,8 @@ class Config:
     )
     extensions_dir: Path | None = None
     mcp_servers: dict[str, McpServerConfig] = field(default_factory=dict)
+    # [proactive] 段原始字典（由 initiative.proactive_config_loader 解析）
+    proactive_raw: dict = field(default_factory=dict)
 
     @property
     def llm(self) -> LLMConfig:
@@ -185,6 +187,7 @@ def load_config(path: str = "config.toml") -> Config:
         ),
         extensions_dir=extensions_dir,
         mcp_servers=mcp_servers,
+        proactive_raw=data.get("proactive") or {},
     )
 
 

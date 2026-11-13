@@ -95,6 +95,25 @@ dir = "extensions"
 # FETCH_TIMEOUT = "30"
 
 # =============================================================================
+# 主动引擎
+# python app.py engine 启动主动推送全链路（九阶段管线）
+# =============================================================================
+
+# [proactive]
+# enabled = true
+# profile = "daily"
+# # 可选预设：daily（高活跃）/ quiet（低打扰），详见 proactive_presets
+#
+# [proactive.target]
+# channel = "telegram"
+# chat_id = "123456789"
+#
+# [proactive.overrides]
+# # 白名单内的键可覆盖预设（trigger / gate / anyaction / safety / context）
+# [proactive.overrides.gate]
+# judge_send_threshold = 0.65
+
+# =============================================================================
 # 提示词
 # =============================================================================
 

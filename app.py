@@ -269,6 +269,58 @@ async def control_server_entry() -> None:
         presence.close()
 
 
+async def proactive_engine_entry() -> None:
+    """启动主动引擎（[proactive] 段配置驱动，kernel + loop 全链路）。"""
+    from initiative.data_sources import DataSourceManager
+    from initiative.proactive_builder import (
+        ProactiveEngineDeps,
+        build_proactive_engine,
+    )
+    from initiative.proactive_config_loader import (
+        ProactiveConfigError,
+        load_proactive_config,
+    )
+
+    try:
+        config = load_config("config.toml")
+    except FileNotFoundError as exc:
+        print(f"配置错误: {exc}")
+        sys.exit(1)
+
+    if not config.proactive_raw:
+        print("config.toml 缺少 [proactive] 段，主动引擎未配置")
+        sys.exit(1)
+    try:
+        engine_cfg = load_proactive_config(config.proactive_raw)
+    except ProactiveConfigError as exc:
+        print(f"主动链路配置错误: {exc}")
+        sys.exit(1)
+    if not engine_cfg.enabled:
+        print("主动引擎未启用（proactive.enabled=false）")
+        sys.exit(1)
+
+    presence = PresenceStore(config.workspace / "presence.db")
+    deps = ProactiveEngineDeps(
+        presence=presence,
+        data_sources=DataSourceManager(),
+        emotion_db_path=config.workspace / "emotion" / "emotion.db",
+        feedback_db_path=config.workspace / "feedback" / "feedback.db",
+    )
+    kernel, loop = build_proactive_engine(engine_cfg, deps)
+
+    print(
+        f"ProactiveMind Engine — {engine_cfg.default_channel}:"
+        f"{engine_cfg.default_chat_id}"
+    )
+    await kernel.start()
+    try:
+        await loop.run()
+    finally:
+        loop.stop()
+        await kernel.stop()
+        presence.close()
+
+
 def _parse_setup_args(args: list[str]) -> dict[str, str | bool]:
     """解析 setup 命令行参数为 dict。"""
     parsed: dict[str, str | bool] = {}
@@ -315,6 +367,8 @@ if __name__ == "__main__":
         asyncio.run(dashboard_server())
     elif mode == "control":
         asyncio.run(control_server_entry())
+    elif mode == "engine":
+        asyncio.run(proactive_engine_entry())
     elif mode == "setup":
         run_setup_cli(sys.argv[2:])
     elif mode == "supervise":
